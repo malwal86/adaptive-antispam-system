@@ -24,15 +24,12 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "app")
 public class RequiredServicesProperties {
 
-    /** JDBC URL of the Postgres instance, e.g. {@code jdbc:postgresql://host:5432/db}. */
     @NotBlank(message = "app.postgres-url (env APP_POSTGRES_URL) must be set")
     private final String postgresUrl;
 
-    /** Redis connection URL, e.g. {@code redis://host:6379}. */
     @NotBlank(message = "app.redis-url (env APP_REDIS_URL) must be set")
     private final String redisUrl;
 
-    /** Kafka bootstrap servers, e.g. {@code host:9092} (comma-separated for a cluster). */
     @NotBlank(message = "app.kafka-bootstrap-servers (env APP_KAFKA_BOOTSTRAP_SERVERS) must be set")
     private final String kafkaBootstrapServers;
 
