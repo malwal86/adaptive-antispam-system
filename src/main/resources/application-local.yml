@@ -1,0 +1,8 @@
+# Local development profile: placeholder service coordinates so a fresh clone
+# boots with one command (`./gradlew bootRun --args='--spring.profiles.active=local'`)
+# without standing up Postgres/Redis/Kafka. These are non-secret defaults — point
+# them at real local services if/when you run them.
+app:
+  postgres-url: jdbc:postgresql://localhost:5432/antispam
+  redis-url: redis://localhost:6379
+  kafka-bootstrap-servers: localhost:9092

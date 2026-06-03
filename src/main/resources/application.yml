@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: living-antispam
+
+# Bind to the port the host injects (Render/Railway/Fly all set PORT); default
+# 8080 for local runs.
+server:
+  port: ${PORT:8080}
+
+# Actuator is remapped to the application root so the public probes are /health
+# and /info (not /actuator/*). /health is the liveness probe; /info reports the
+# build version + git commit so any deployed build is identifiable.
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health,info
+  info:
+    build:
+      enabled: true
+    git:
+      enabled: false
+
+# Required managed-service coordinates (Postgres / Redis / Kafka) are NOT
+# defaulted here on purpose: in any real environment they must be supplied via
+# APP_POSTGRES_URL / APP_REDIS_URL / APP_KAFKA_BOOTSTRAP_SERVERS. A missing
+# value fails startup loudly (see RequiredServicesProperties). For local dev,
+# activate the `local` profile, which supplies placeholders.

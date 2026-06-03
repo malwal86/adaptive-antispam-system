@@ -1,0 +1,56 @@
+name: CI
+
+# Build + test on every push and PR; on a green main build, trigger the hosted
+# deploy. This is the gate that backs the "push to main → deploys to the hosted
+# URL" acceptance criterion.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so bootBuildInfo can stamp the commit
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test
+        run: ./gradlew --no-daemon clean test bootJar
+
+      - name: Upload bootJar
+        uses: actions/upload-artifact@v4
+        with:
+          name: living-antispam-jar
+          path: build/libs/*.jar
+
+  deploy:
+    name: Deploy to hosted URL
+    needs: build-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # Render auto-deploys from git; this hook makes the deploy explicit and
+      # ordered after a green build. Set RENDER_DEPLOY_HOOK_URL in repo secrets.
+      # The step is skipped (not failed) if the secret is absent.
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL not set — skipping explicit deploy trigger."
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK"

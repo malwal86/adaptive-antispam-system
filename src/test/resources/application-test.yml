@@ -1,0 +1,6 @@
+# Test profile: placeholder service config so the context boots in CI without
+# real Postgres/Redis/Kafka. Mirrors the shape of the production env contract.
+app:
+  postgres-url: jdbc:postgresql://localhost:5432/antispam_test
+  redis-url: redis://localhost:6379
+  kafka-bootstrap-servers: localhost:9092

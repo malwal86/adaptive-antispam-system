@@ -1,0 +1,8 @@
+plugins {
+    // Lets the Java toolchain auto-provision the pinned JDK 21 when the build
+    // machine doesn't already have it (CI, fresh clones), keeping the build
+    // reproducible regardless of the developer's default JDK.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+
+rootProject.name = 'living-antispam'
