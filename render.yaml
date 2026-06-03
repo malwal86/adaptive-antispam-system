@@ -1,0 +1,22 @@
+# Render blueprint for the always-on hosted demo. A push to `main` triggers an
+# automatic Docker build + deploy (autoDeploy: true); Render polls /health to
+# confirm the new build is live before routing traffic to it.
+#
+# The managed-service URLs are marked `sync: false` — set the real values in the
+# Render dashboard (or wire them from Render add-ons). Nothing secret lives here.
+services:
+  - type: web
+    name: living-antispam
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: APP_POSTGRES_URL
+        sync: false
+      - key: APP_REDIS_URL
+        sync: false
+      - key: APP_KAFKA_BOOTSTRAP_SERVERS
+        sync: false

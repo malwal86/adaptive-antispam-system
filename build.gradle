@@ -1,0 +1,64 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.antispam'
+version = '0.1.0'
+
+java {
+    // Java 21 LTS is the project baseline; the Gradle toolchain pins it so the
+    // build is reproducible regardless of the developer's default JDK.
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // Drives fail-fast validation of required service config (@Validated @NotBlank).
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Generates build-info.properties so /info reports the version + git commit,
+// making any deployed build identifiable (acceptance criterion 3).
+springBoot {
+    buildInfo {
+        properties {
+            additional = [
+                commit: gitCommit()
+            ]
+        }
+    }
+}
+
+// Resolve the short git commit at configuration time, tolerating a missing
+// .git (e.g. a source tarball) by falling back to "unknown".
+def gitCommit() {
+    try {
+        def stdout = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'rev-parse', '--short', 'HEAD'
+            standardOutput = stdout
+            errorOutput = new ByteArrayOutputStream()
+            ignoreExitValue = true
+        }
+        def commit = stdout.toString().trim()
+        return commit.isEmpty() ? 'unknown' : commit
+    } catch (ignored) {
+        return 'unknown'
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

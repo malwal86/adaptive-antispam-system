@@ -1,0 +1,18 @@
+# Keep the build context small — but DO keep .git so bootBuildInfo can read the
+# commit for the /info endpoint.
+.gradle/
+build/
+.idea/
+*.iml
+node_modules/
+.next/
+out/
+
+# Local-only working context (not needed in the image).
+planning/
+CLAUDE.md
+.claude/
+
+# OS / editor noise
+.DS_Store
+*.swp
