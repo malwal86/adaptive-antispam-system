@@ -4,6 +4,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -19,6 +20,7 @@ public class IngestService {
     private final EmailRepository repository;
     private final EmailParser parser;
 
+    @Autowired
     public IngestService(EmailRepository repository, EmailParser parser) {
         this.repository = repository;
         this.parser = parser;

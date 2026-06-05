@@ -6,6 +6,7 @@ import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -40,6 +41,7 @@ public class EmailRepository {
 
     private final JdbcTemplate jdbc;
 
+    @Autowired
     public EmailRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }

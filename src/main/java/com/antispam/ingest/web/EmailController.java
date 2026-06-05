@@ -6,6 +6,7 @@ import com.antispam.ingest.IngestService;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,32 +34,35 @@ public class EmailController {
 
     private final IngestService ingestService;
 
+    @Autowired
     public EmailController(IngestService ingestService) {
         this.ingestService = ingestService;
     }
 
-    @PostMapping(consumes = {"text/plain", "message/rfc822", MediaType.APPLICATION_OCTET_STREAM_VALUE})
+    @PostMapping(
+            consumes = {"text/plain", "message/rfc822", MediaType.APPLICATION_OCTET_STREAM_VALUE},
+            produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<IngestResponse> ingestRaw(
             @RequestBody byte[] rawContent,
             @RequestHeader(value = "X-Ingest-Source", required = false) String source) {
         return toResponse(ingestService.ingest(rawContent, source));
     }
 
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<IngestResponse> ingestJson(@RequestBody JsonIngestRequest request) {
         byte[] rawContent = request.raw() == null ? null : request.raw().getBytes(StandardCharsets.UTF_8);
         return toResponse(ingestService.ingest(rawContent, request.source()));
     }
 
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<EmailResponse> get(@PathVariable UUID id) {
+    public ResponseEntity<EmailResponse> get(@PathVariable("id") UUID id) {
         return ingestService.findById(id)
                 .map(email -> ResponseEntity.ok(EmailResponse.from(email)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @GetMapping("/{id}/raw")
-    public ResponseEntity<byte[]> getRaw(@PathVariable UUID id) {
+    @GetMapping(value = "/{id}/raw", produces = "message/rfc822")
+    public ResponseEntity<byte[]> getRaw(@PathVariable("id") UUID id) {
         return ingestService.findById(id)
                 .map(EmailController::rawBytes)
                 .orElseGet(() -> ResponseEntity.notFound().build());
