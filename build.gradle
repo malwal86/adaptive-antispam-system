@@ -25,7 +25,22 @@ dependencies {
     // Drives fail-fast validation of required service config (@Validated @NotBlank).
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
+    // Persistence: plain JDBC over Postgres, with Flyway-managed schema (the
+    // immutability trigger lives in a migration, not application code).
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // RFC-822 parsing (Jakarta Mail / Angus implementation).
+    implementation 'org.eclipse.angus:angus-mail:2.0.3'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // Real Postgres in integration tests so the immutability trigger and
+    // ON CONFLICT idempotency are exercised against the actual database.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

@@ -1,8 +1,14 @@
-# Local development profile: placeholder service coordinates so a fresh clone
-# boots with one command (`./gradlew bootRun --args='--spring.profiles.active=local'`)
-# without standing up Postgres/Redis/Kafka. These are non-secret defaults — point
-# them at real local services if/when you run them.
+# Local development profile. As of story 01.02 the app persists to Postgres on
+# startup (Flyway runs migrations), so a local Postgres must be reachable. Bring
+# one up with `docker compose up -d db` (see docker-compose.yml), then run:
+#   ./gradlew bootRun --args='--spring.profiles.active=local'
+# Redis/Kafka are still placeholders — not yet connected, only validated present.
 app:
   postgres-url: jdbc:postgresql://localhost:5432/antispam
   redis-url: redis://localhost:6379
   kafka-bootstrap-servers: localhost:9092
+
+spring:
+  datasource:
+    username: postgres
+    password: postgres

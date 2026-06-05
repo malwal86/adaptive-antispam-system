@@ -1,0 +1,17 @@
+Return-Path: <newsletter@deals.example.net>
+Received: from mx.recipient.org (mx.recipient.org [10.0.0.5])
+	by inbox.recipient.org with ESMTP id ABC123
+	for <victim@recipient.org>; Tue, 15 Oct 2024 09:30:00 +0000
+Authentication-Results: mx.recipient.org; spf=pass smtp.mailfrom=deals.example.net; dkim=pass header.d=deals.example.net
+From: "Hot Deals" <newsletter@deals.example.net>
+To: victim@recipient.org
+Subject: =?UTF-8?B?WW91IHdvbiEgQ2xhaW0geW91ciBwcml6ZQ==?=
+Date: Tue, 15 Oct 2024 09:30:00 +0000
+Message-ID: <campaign-9921@deals.example.net>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Congratulations! You have been selected to receive a $1,000 gift card.
+Click http://deals.example.net/claim?id=9921 to claim your prize now.
+
+Unsubscribe: http://deals.example.net/unsub?id=9921
