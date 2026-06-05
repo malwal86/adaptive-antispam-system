@@ -4,3 +4,14 @@ app:
   postgres-url: jdbc:postgresql://localhost:5432/antispam_test
   redis-url: redis://localhost:6379
   kafka-bootstrap-servers: localhost:9092
+
+# Hard-rule fixtures pinned for the integration tests, so they don't ride on the
+# editable demo defaults in the main application.yml.
+antispam:
+  hard-rules:
+    url-denylist:
+      - malware.example
+      - phishing.test
+    high-value-brands:
+      - name: paypal
+        domain: paypal.com
