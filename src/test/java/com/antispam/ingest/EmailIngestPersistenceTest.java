@@ -90,7 +90,13 @@ class EmailIngestPersistenceTest extends AbstractPostgresIntegrationTest {
     void truncate_of_the_emails_table_is_rejected_by_the_database() {
         ingestService.ingest(sample("notruncate"), "test");
 
-        assertThatThrownBy(() -> jdbc.execute("truncate emails"))
+        // CASCADE, deliberately: a plain TRUNCATE is already blocked by the
+        // ground_truth_labels foreign key, whose RESTRICT check Postgres runs
+        // *before* firing the BEFORE TRUNCATE trigger — so it fails with a
+        // foreign-key message, not the immutability one. CASCADE satisfies the
+        // FK check and reaches the trigger, proving the stronger guarantee:
+        // even a truncate that defeats the FK guard is rejected as immutable.
+        assertThatThrownBy(() -> jdbc.execute("truncate emails cascade"))
                 .isInstanceOf(DataAccessException.class)
                 .hasMessageContaining("immutable");
     }

@@ -1,0 +1,21 @@
+Return-Path: <security@account-verify-support.example>
+Received: from smtp.account-verify-support.example (smtp.account-verify-support.example [198.51.100.7])
+	by inbox.recipient.example with ESMTP id PHISH0001
+	for <member@recipient.example>; Wed, 16 Oct 2024 21:47:00 +0000
+Authentication-Results: mx.recipient.example; spf=fail smtp.mailfrom=account-verify-support.example; dkim=none; dmarc=fail
+From: "PayPal Security" <security@paypal.account-verify-support.example>
+To: member@recipient.example
+Subject: Your account has been limited - action required
+Date: Wed, 16 Oct 2024 21:47:00 +0000
+Message-ID: <verify-7781@account-verify-support.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Dear customer,
+
+We detected unusual activity. Your account access is limited until you confirm
+your identity. Verify within 24 hours to avoid permanent suspension:
+
+http://paypal.account-verify-support.example/login?case=7781
+
+PayPal Security Team

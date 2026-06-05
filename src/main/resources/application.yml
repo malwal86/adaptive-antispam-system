@@ -34,12 +34,20 @@ management:
     git:
       enabled: false
 
+# Corpus seeding (story 01.03). Disabled by default so a normal boot never loads
+# the corpus; `make seed` flips antispam.seed.enabled=true and points corpus-dir
+# at a <dataset>/<class>/<file> tree. Default dir is the vendored sample so an
+# offline `make seed` works out of the box.
+
 # Hard-rule data (story 01.04). Denylists and the brand list are metadata, not
 # code, so the policy can change without a redeploy. These are illustrative demo
 # defaults; real denylists / phish feeds load through the seed path (story 01.03)
 # and operational tuning later. A host matches the denylist when it equals an
 # entry or is a subdomain of it.
 antispam:
+  seed:
+    enabled: false
+    corpus-dir: seed-corpus
   hard-rules:
     url-denylist:
       - malware.example

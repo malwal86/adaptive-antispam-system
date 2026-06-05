@@ -1,0 +1,18 @@
+Return-Path: <promo@megadeals-offers.example>
+Received: from bulk.megadeals-offers.example (bulk.megadeals-offers.example [203.0.113.9])
+	by inbox.recipient.example with ESMTP id SPAM0001
+	for <user@recipient.example>; Tue, 15 Oct 2024 03:22:00 +0000
+Authentication-Results: mx.recipient.example; spf=softfail smtp.mailfrom=megadeals-offers.example; dkim=none; dmarc=fail
+From: "Mega Deals" <promo@megadeals-offers.example>
+To: user@recipient.example
+Subject: =?UTF-8?B?8J+OiSBZb3UndmUgYmVlbiBzZWxlY3RlZCAtIDkwJSBPRkYgdG9kYXkgb25seSE=?=
+Date: Tue, 15 Oct 2024 03:22:00 +0000
+Message-ID: <blast-55012@megadeals-offers.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+LIMITED TIME!! Get 90% OFF everything in store. No coupon needed.
+
+Shop now: http://megadeals-offers.example/sale?ref=55012
+
+Reply STOP to opt out.
