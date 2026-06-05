@@ -2,6 +2,18 @@ spring:
   application:
     name: living-antispam
 
+  # The JDBC datasource reuses the single APP_POSTGRES_URL contract from story
+  # 01.01 (relaxed-bound as app.postgres-url) so there is one place the Postgres
+  # location is configured. Credentials come from their own env vars.
+  datasource:
+    url: ${app.postgres-url:}
+    username: ${APP_POSTGRES_USER:}
+    password: ${APP_POSTGRES_PASSWORD:}
+
+  # Flyway owns the schema, including the emails-immutability trigger.
+  flyway:
+    enabled: true
+
 # Bind to the port the host injects (Render/Railway/Fly all set PORT); default
 # 8080 for local runs.
 server:

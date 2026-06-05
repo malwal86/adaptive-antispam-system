@@ -1,17 +1,13 @@
 package com.antispam;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Verifies the Spring application context boots end-to-end with valid service
- * configuration present — the irreducible "the process starts" guarantee that
- * every later slice deploys into.
+ * Verifies the Spring application context boots end-to-end against a real
+ * Postgres (Flyway migrations apply, datasource connects) — the irreducible
+ * "the process starts" guarantee that every later slice deploys into.
  */
-@SpringBootTest
-@ActiveProfiles("test")
-class AntiSpamApplicationTests {
+class AntiSpamApplicationTests extends AbstractPostgresIntegrationTest {
 
     @Test
     void contextLoads() {
