@@ -1,0 +1,27 @@
+From harvester@feed.example Wed Oct 16 22:00:00 2024
+Return-Path: <alerts@secure-bank-login.example>
+Authentication-Results: mx.recipient.example; spf=fail; dkim=none; dmarc=fail
+From: "Bank Alerts" <alerts@secure-bank-login.example>
+To: client@recipient.example
+Subject: Unusual sign-in detected on your account
+Date: Wed, 16 Oct 2024 22:00:00 +0000
+Message-ID: <alert-3301@secure-bank-login.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+We blocked a sign-in attempt. If this was not you, re-confirm your details now:
+http://secure-bank-login.example/reauth?id=3301
+
+From harvester@feed.example Wed Oct 16 22:03:00 2024
+Return-Path: <no-reply@delivery-reschedule.example>
+Authentication-Results: mx.recipient.example; spf=fail; dkim=none; dmarc=fail
+From: "Parcel Service" <no-reply@delivery-reschedule.example>
+To: client@recipient.example
+Subject: Your package could not be delivered
+Date: Wed, 16 Oct 2024 22:03:00 +0000
+Message-ID: <parcel-9920@delivery-reschedule.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+A customs fee of 1.99 is required to release your parcel. Pay and reschedule:
+http://delivery-reschedule.example/pay?track=9920

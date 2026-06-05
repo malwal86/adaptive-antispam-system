@@ -74,6 +74,26 @@ Still on the roadmap (see the standards discussion): encryption-at-rest +
 crypto-shredding for erasure, and PII masking before any LLM egress (Epic 05),
 data export (10.01), and the console (Epic 12).
 
+## Seeding the corpus (story 01.03)
+
+A labeled body of real mail drives features, training, replay, and the demo.
+
+```bash
+make seed            # offline: load the vendored sample corpus (seed-corpus/)
+make seed-download   # fetch the real public corpora (SpamAssassin / Enron / phishing), normalize, load
+```
+
+Both load through the **normal ingest path** (`emails.ingest_source = 'seed'`) and
+record a high-confidence `ground_truth_labels` row per email (`ham` / `spam` /
+`phish`) plus the originating dataset. The corpus is a directory tree
+`seed-corpus/<dataset>/<class>/<file>` — `.eml`/raw files are one message each;
+`.mbox` files are split. Loading is **idempotent**: re-running adds zero duplicate
+emails (content-hash dedupe) and logs a per-class breakdown.
+
+Sources, licensing, and provenance — including why the committed files are
+synthetic samples — are documented in [`seed-corpus/README.md`](seed-corpus/README.md).
+Seeding requires a reachable Postgres (`docker compose up -d db`).
+
 ## Test
 
 ```bash

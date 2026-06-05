@@ -34,6 +34,15 @@ management:
     git:
       enabled: false
 
+# Corpus seeding (story 01.03). Disabled by default so a normal boot never loads
+# the corpus; `make seed` flips antispam.seed.enabled=true and points corpus-dir
+# at a <dataset>/<class>/<file> tree. Default dir is the vendored sample so an
+# offline `make seed` works out of the box.
+antispam:
+  seed:
+    enabled: false
+    corpus-dir: seed-corpus
+
 # Required managed-service coordinates (Postgres / Redis / Kafka) are NOT
 # defaulted here on purpose: in any real environment they must be supplied via
 # APP_POSTGRES_URL / APP_REDIS_URL / APP_KAFKA_BOOTSTRAP_SERVERS. A missing

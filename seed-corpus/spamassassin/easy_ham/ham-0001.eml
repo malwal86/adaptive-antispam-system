@@ -1,0 +1,20 @@
+Return-Path: <maria@projectteam.example>
+Received: from mail.projectteam.example (mail.projectteam.example [10.1.2.3])
+	by inbox.recipient.example with ESMTP id HAM0001
+	for <devs@recipient.example>; Mon, 14 Oct 2024 14:05:00 +0000
+Authentication-Results: mx.recipient.example; spf=pass smtp.mailfrom=projectteam.example; dkim=pass header.d=projectteam.example; dmarc=pass
+From: "Maria Alvarez" <maria@projectteam.example>
+To: devs@recipient.example
+Subject: Notes from today's planning sync
+Date: Mon, 14 Oct 2024 14:05:00 +0000
+Message-ID: <sync-2024-10-14@projectteam.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Hi all,
+
+Quick recap of the planning sync: we agreed to cut the import feature from
+this milestone and revisit it next cycle. I'll update the board this afternoon.
+
+Thanks,
+Maria
