@@ -56,6 +56,24 @@ Cold start to a healthy `/health` is well under 30s.
 The `emails` table is immutable: a Postgres trigger rejects any UPDATE, DELETE,
 or TRUNCATE, so the canonical record can never be silently rewritten.
 
+### Privacy posture
+
+Principle: **protect at rest, redact at egress.** The canonical store keeps raw,
+byte-faithful messages (needed for replay/retrain) and is never redacted —
+redaction happens on the way out:
+
+- `GET /emails/{id}` is **redacted by default**: sender/recipient local-parts are
+  masked (`n***@deals.example.net`) and the raw body is omitted. The domain is
+  kept (it is the reputation key). The full record is opt-in via `?reveal=true`,
+  and the verbatim bytes via `/emails/{id}/raw` — both privileged views to be
+  gated by authz once it exists.
+- **Logs never contain raw bodies or unmasked addresses** — see
+  `com.antispam.privacy.Redaction`, used by the ingest audit log.
+
+Still on the roadmap (see the standards discussion): encryption-at-rest +
+crypto-shredding for erasure, and PII masking before any LLM egress (Epic 05),
+data export (10.01), and the console (Epic 12).
+
 ## Test
 
 ```bash

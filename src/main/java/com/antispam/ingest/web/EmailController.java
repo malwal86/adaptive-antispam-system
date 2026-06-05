@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -54,13 +55,25 @@ public class EmailController {
         return toResponse(ingestService.ingest(rawContent, request.source()));
     }
 
+    /**
+     * Returns the email, redacted by default (sender/recipients masked, raw body
+     * omitted). Pass {@code ?reveal=true} for the full unredacted record — a
+     * privileged view that must be access-controlled once authz is in place.
+     */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<EmailResponse> get(@PathVariable("id") UUID id) {
+    public ResponseEntity<EmailResponse> get(
+            @PathVariable("id") UUID id,
+            @RequestParam(name = "reveal", defaultValue = "false") boolean reveal) {
         return ingestService.findById(id)
-                .map(email -> ResponseEntity.ok(EmailResponse.from(email)))
+                .map(email -> ResponseEntity.ok(EmailResponse.from(email, reveal)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /**
+     * Returns the raw message bytes verbatim. This is a privileged, unredacted
+     * accessor (the byte-faithful canonical content) and must be gated by authz
+     * once it exists.
+     */
     @GetMapping(value = "/{id}/raw", produces = "message/rfc822")
     public ResponseEntity<byte[]> getRaw(@PathVariable("id") UUID id) {
         return ingestService.findById(id)

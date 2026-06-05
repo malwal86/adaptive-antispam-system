@@ -56,13 +56,19 @@ class EmailIngestApiTest extends AbstractPostgresIntegrationTest {
 
         String emailId = idFrom(posted);
 
-        // JSON view: parsed metadata + byte-faithful raw (Base64).
+        // Default JSON view is redacted: sender masked, domain kept, no raw body.
         mockMvc.perform(get("/emails/{id}", emailId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.sender").value("newsletter@deals.example.net"))
+                .andExpect(jsonPath("$.sender").value("n***@deals.example.net"))
                 .andExpect(jsonPath("$.senderDomain").value("deals.example.net"))
                 .andExpect(jsonPath("$.subject").value("You won! Claim your prize"))
                 .andExpect(jsonPath("$.authResults").value(org.hamcrest.Matchers.containsString("spf=pass")))
+                .andExpect(jsonPath("$.rawBase64").doesNotExist());
+
+        // Opt-in reveal returns the full, byte-faithful record.
+        mockMvc.perform(get("/emails/{id}", emailId).param("reveal", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sender").value("newsletter@deals.example.net"))
                 .andExpect(jsonPath("$.rawBase64").value(Base64.getEncoder().encodeToString(raw)));
 
         // Raw view: byte-identical to what was posted.
@@ -86,7 +92,7 @@ class EmailIngestApiTest extends AbstractPostgresIntegrationTest {
 
         mockMvc.perform(get("/emails/{id}", idFrom(posted)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.sender").value("json@example.com"));
+                .andExpect(jsonPath("$.sender").value("j***@example.com"));
     }
 
     @Test

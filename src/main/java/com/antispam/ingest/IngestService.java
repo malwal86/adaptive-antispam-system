@@ -1,9 +1,12 @@
 package com.antispam.ingest;
 
+import com.antispam.privacy.Redaction;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +19,8 @@ import org.springframework.stereotype.Service;
 public class IngestService {
 
     private static final String DEFAULT_SOURCE = "api";
+
+    private static final Logger log = LoggerFactory.getLogger(IngestService.class);
 
     private final EmailRepository repository;
     private final EmailParser parser;
@@ -39,7 +44,13 @@ public class IngestService {
         }
         byte[] contentHash = sha256(rawContent);
         ParsedEmail metadata = parser.parse(rawContent);
-        return repository.save(rawContent, contentHash, metadata, normalizeSource(source));
+        IngestResult result = repository.save(rawContent, contentHash, metadata, normalizeSource(source));
+        // Audit log: the sender is masked and the body is never logged — only the
+        // content hash (non-PII) identifies the message. See com.antispam.privacy.
+        log.info("ingested email id={} source={} duplicate={} sender={} hash={}",
+                result.emailId(), result.source(), result.duplicate(),
+                Redaction.maskAddress(metadata.sender()), result.contentHashHex());
+        return result;
     }
 
     public Optional<Email> findById(UUID id) {
