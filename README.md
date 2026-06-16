@@ -9,9 +9,19 @@ Implemented so far:
   immutable, byte-faithful canonical record in Postgres (DB-trigger-enforced —
   UPDATE/DELETE/TRUNCATE are rejected), idempotent on content hash, retrievable
   via `GET /emails/{id}`.
+- **01.03 — dataset seed:** a labeled corpus (ham/spam/phish) loaded through the
+  ingest path with high-confidence `ground_truth_labels`; idempotent re-seeding.
+- **01.04 — hard-rule engine:** denylisted-URL and brand-spoof rules short-circuit
+  the pipeline to `block`/`quarantine` (model skipped), persisted to
+  `classifications` with reason codes and `route_used`.
+- **01.05 — single-email analyzer + console:** `POST /analyze` runs the pipeline
+  on a pasted email (or a picked seed sample, by id) and returns
+  `{tier, reasonCodes, routeUsed, latencyMs, explanation}`, persisted and
+  refetchable. A separate **Next.js console** (`console/`) renders it as an
+  animated, colour-coded result card.
 
 Every later slice (feature extraction, reputation, classifier, LLM fallback,
-console) builds on this spine.
+richer console) builds on this spine.
 
 ## Requirements
 
@@ -55,6 +65,38 @@ Cold start to a healthy `/health` is well under 30s.
 
 The `emails` table is immutable: a Postgres trigger rejects any UPDATE, DELETE,
 or TRUNCATE, so the canonical record can never be silently rewritten.
+
+## Analyzer API (story 01.05)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/analyze` | Decide an email and persist the verdict. JSON `{"raw":"<rfc822>","source":"..."}` (paste path) **or** `{"emailId":"<uuid>"}` (analyse an already-ingested email, e.g. a picked seed sample). Also accepts a raw `text/plain`/`message/rfc822` body. Returns `{emailId, classificationId, tier, reasonCodes[], routeUsed, latencyMs, explanation, decidedAt, duplicate}`. `400` for empty paste, `404` for unknown id. |
+| `GET` | `/analyze/{emailId}` | The latest persisted decision for an email (proves durability on refetch). `404` if never decided. |
+| `GET` | `/seed/samples?perLabel=N` | Labeled seed samples for the picker: `[{emailId, label, dataset, subject, senderDomain}]`, balanced across `ham`/`spam`/`phish` (no address PII). |
+
+`tier` is one of `allow`/`warn`/`quarantine`/`block`; `routeUsed` is `hard_rule`
+or `model`. The reason codes are the closed machine vocabulary; the `explanation`
+is a grounded one-liner derived from them. JSON uses the repo's camelCase
+convention (as in the ingest API). The decision is written to `classifications`,
+so it is durable, not merely rendered.
+
+CORS: the analyzer/console is a **separate Next.js service**; the browser origin(s)
+it is served from are allow-listed via `antispam.console.allowed-origins`
+(env `ANTISPAM_CONSOLE_ALLOWED_ORIGINS`, comma-separated). Default allows the
+local Next dev server (`http://localhost:3000`).
+
+## Console (story 01.05 / Epic 12)
+
+The single-email analyzer UI is a thin Next.js client in [`console/`](console/) —
+paste or pick an email and watch the decision render as an animated, colour-coded
+result card (tier, reason chips, route, latency, explanation). Run the Java API,
+then:
+
+```bash
+cd console && npm install && npm run dev   # http://localhost:3000 → API on :8080
+```
+
+See [`console/README.md`](console/README.md) for stack, tests, and configuration.
 
 ### Privacy posture
 
@@ -124,6 +166,7 @@ half-configured.
 | `APP_POSTGRES_PASSWORD` | `spring.datasource.password` | `••••` | Postgres password (secret — env only) |
 | `APP_REDIS_URL` | `app.redis-url` | `redis://host:6379` | Upstash Redis (reputation cache, budget cap) |
 | `APP_KAFKA_BOOTSTRAP_SERVERS` | `app.kafka-bootstrap-servers` | `host:9092` | Aiven Kafka (event spine) |
+| `ANTISPAM_CONSOLE_ALLOWED_ORIGINS` | `antispam.console.allowed-origins` | `https://console.example` | CORS allow-list for the console (comma-separated; defaults to `http://localhost:3000`) |
 | `PORT` | `server.port` | `8080` | Host-injected listen port (defaults to 8080) |
 
 For local development the `local` profile (`src/main/resources/application-local.yml`)
@@ -142,17 +185,24 @@ java -jar build/libs/living-antispam-0.1.0.jar
 
 ## Deploy (always-on hosted demo)
 
-- **`Dockerfile`** — multi-stage build (JDK 21 build → JRE 21 runtime), runs as a
-  non-root user, binds the host-injected `PORT`.
-- **`render.yaml`** — Render blueprint: Docker web service, `autoDeploy: true` so a
-  push to `main` builds + deploys, `healthCheckPath: /health`. Set the three
-  `APP_*` env vars in the Render dashboard.
-- **`.github/workflows/ci.yml`** — builds + tests on every push/PR; on a green
-  `main` build, triggers the hosted deploy (via the `RENDER_DEPLOY_HOOK_URL`
-  secret; skipped if unset).
+The two pieces deploy to the platform each fits best — **API → Render** (Docker),
+**console → Vercel** (Next.js). Full step-by-step setup is in
+[`DEPLOYMENT.md`](DEPLOYMENT.md); in brief:
 
-Any host that injects `PORT` (Render / Railway / Fly) works; the app is
-host-agnostic.
+- **`Dockerfile`** — Java API: multi-stage build (JDK 21 build → JRE 21 runtime),
+  non-root, binds the host-injected `PORT`. Deployed on Render.
+- **`render.yaml`** — Render blueprint for the API service only (`autoDeploy:
+  false` — CI gates deploys). Postgres is **Supabase**; set `APP_POSTGRES_*` and
+  `ANTISPAM_CONSOLE_ALLOWED_ORIGINS` in the Render dashboard.
+- **Console → Vercel** — root directory `console/`, env `NEXT_PUBLIC_API_BASE_URL`
+  = the Render API URL. Vercel auto-builds every push: a **preview** deploy per
+  branch/PR and **production** on `main`. The API's CORS allows `https://*.vercel.app`
+  so preview URLs work live too. (`console/Dockerfile` also exists for Docker hosts.)
+- **`.github/workflows/ci.yml`** — on every push/PR runs the Java build/test and a
+  console job (Vitest + build + Playwright E2E); on a green `main` build it
+  triggers the Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret) and then
+  **smoke-tests the live API** — polls `/info` until the new commit is serving,
+  then asserts a real `/analyze` decision (`LIVE_API_URL` variable).
 
 ## Layout
 
@@ -167,12 +217,21 @@ src/main/java/com/antispam/
     EmailRepository.java, Email.java        Append-only JDBC access
     IngestService.java, IngestResult.java   Hash + parse + idempotent persist
     web/EmailController.java                 POST /emails, GET /emails/{id}[/raw]
+  decision/                        Hard-rule engine + decision pipeline (01.04)
+  analyze/                         POST /analyze + GET /analyze/{id} (01.05)
+    AnalyzeService.java                       Ingest-or-load → decide → persist
+    AnalysisExplainer.java                    Grounded reason-code → sentence
+    web/AnalyzeController.java                 Analyzer endpoints
+  seed/                            Labeled corpus seed (01.03) + sample picker (01.05)
+    web/SeedSampleController.java             GET /seed/samples
+  config/WebCorsConfig.java        CORS allow-list for the console
 src/main/resources/
   application.yml                   Common config; actuator remapped to /health, /info
   application-local.yml             Local placeholders + datasource creds
   db/migration/V1__create_emails.sql       Schema + immutability trigger (Flyway)
 src/test/java/com/antispam/         Acceptance tests (see Test section)
-Dockerfile, .dockerignore, render.yaml, .github/workflows/ci.yml   Deploy
+console/                            Next.js analyzer console (story 01.05; Epic 12)
+Dockerfile, console/Dockerfile, render.yaml, .github/workflows/ci.yml   Deploy
 ```
 
 > Project context and the full backlog live under `planning/` (gitignored local

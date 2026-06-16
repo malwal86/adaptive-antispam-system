@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Material Design 3 tonal tokens (dark scheme — the "abuse lab" reads as a
+ * technical console). Values are space-separated RGB channels so Tailwind's
+ * `rgb(var(--token) / <alpha>)` can apply opacity. Palette kept small (a neutral
+ * surface ramp + one primary + four tier hues), per the UI guidelines.
+ */
+:root {
+  --m3-surface: 16 18 23;
+  --m3-surface-container: 24 27 34;
+  --m3-surface-variant: 33 37 46;
+  --m3-on-surface: 226 229 236;
+  --m3-on-surface-variant: 165 173 187;
+  --m3-outline: 60 66 78;
+  --m3-primary: 130 178 255;
+  --m3-on-primary: 0 33 66;
+
+  /* Decision tiers: green → amber → deep-orange → red, each with a soft container. */
+  --tier-allow: 90 196 140;
+  --tier-allow-container: 22 49 38;
+  --tier-warn: 232 188 92;
+  --tier-warn-container: 56 45 18;
+  --tier-quarantine: 240 148 86;
+  --tier-quarantine-container: 58 36 20;
+  --tier-block: 240 110 110;
+  --tier-block-container: 58 24 26;
+}
+
+body {
+  background-color: rgb(var(--m3-surface));
+  color: rgb(var(--m3-on-surface));
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Material Symbols (Outlined — one variant, per the guidelines). 24px optical. */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+.material-symbols-outlined.filled {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/*
+ * Respect reduced-motion: replace movement with instant state (the guidelines'
+ * accessibility rule). framer-motion also reads this via useReducedMotion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
