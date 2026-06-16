@@ -8,6 +8,7 @@ import com.antispam.AbstractPostgresIntegrationTest;
 import com.antispam.ingest.IngestResult;
 import com.antispam.ingest.IngestService;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,9 +16,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * The sample picker returns a balanced, labeled slice of the seed corpus: with
- * several spam but only one ham/phish, {@code perLabel=1} yields exactly one of
- * each class — the picker always offers a ham/spam/phish to try.
+ * The sample picker returns labeled samples joined to their email metadata.
+ *
+ * <p>The integration suite shares one Postgres container, and other classes (e.g.
+ * the corpus loader) also write {@code ground_truth_labels}, so this test does not
+ * assume it is the only seeder: it seeds its own uniquely-identifiable emails and
+ * asserts they appear with the right label/subject/domain, plus that all three
+ * classes are represented — rather than asserting on global ordering or counts.
  */
 @AutoConfigureMockMvc
 class SeedSampleApiTest extends AbstractPostgresIntegrationTest {
@@ -31,27 +36,49 @@ class SeedSampleApiTest extends AbstractPostgresIntegrationTest {
     @Autowired
     private GroundTruthLabelRepository labels;
 
-    private void seed(String raw, GroundTruthLabel label, String dataset) {
+    private UUID seed(String raw, GroundTruthLabel label, String dataset) {
         IngestResult result = ingestService.ingest(raw.getBytes(StandardCharsets.UTF_8), "seed");
         labels.saveIfAbsent(result.emailId(), label, dataset);
+        return result.emailId();
     }
 
     @Test
-    void returns_a_balanced_labeled_slice_with_subject_and_domain() throws Exception {
-        seed("From: a@promo.example\nSubject: prize one\n\nbody\n", GroundTruthLabel.SPAM, "spamassassin");
-        seed("From: b@promo.example\nSubject: prize two\n\nbody\n", GroundTruthLabel.SPAM, "spamassassin");
-        seed("From: c@good.example\nSubject: hello\n\nbody\n", GroundTruthLabel.HAM, "enron");
-        seed("From: d@phish.example\nSubject: verify\n\nbody\n", GroundTruthLabel.PHISH, "phishtank");
+    void returns_labeled_samples_with_subject_and_domain_for_each_class() throws Exception {
+        UUID hamId = seed(
+                "From: c@seedpick-ham.example\nSubject: seedpick ham hello\n\nbody\n",
+                GroundTruthLabel.HAM, "enron");
+        seed("From: a@seedpick-spam.example\nSubject: seedpick spam one\n\nbody\n",
+                GroundTruthLabel.SPAM, "spamassassin");
+        seed("From: b@seedpick-spam.example\nSubject: seedpick spam two\n\nbody\n",
+                GroundTruthLabel.SPAM, "spamassassin");
+        seed("From: d@seedpick-phish.example\nSubject: seedpick phish verify\n\nbody\n",
+                GroundTruthLabel.PHISH, "phishtank");
 
-        mockMvc.perform(get("/seed/samples").param("perLabel", "1"))
+        // Ask for a wide slice so freshly-seeded (newest) rows are included
+        // regardless of any corpus data another test class may have loaded.
+        mockMvc.perform(get("/seed/samples").param("perLabel", "25"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", Matchers.hasSize(3)))
-                .andExpect(jsonPath("$[*].label",
-                        Matchers.containsInAnyOrder("ham", "spam", "phish")))
-                .andExpect(jsonPath("$[0].emailId").exists())
-                .andExpect(jsonPath("$[*].subject",
-                        Matchers.hasItem(Matchers.containsString("hello"))))
-                .andExpect(jsonPath("$[*].senderDomain",
-                        Matchers.hasItem("good.example")));
+                // All three ground-truth classes are represented.
+                .andExpect(jsonPath("$[*].label", Matchers.hasItems("ham", "spam", "phish")))
+                // Our freshly-seeded ham appears, carrying its metadata (no address PII).
+                .andExpect(jsonPath("$[?(@.emailId=='" + hamId + "')].label",
+                        Matchers.contains("ham")))
+                .andExpect(jsonPath("$[?(@.emailId=='" + hamId + "')].subject",
+                        Matchers.contains("seedpick ham hello")))
+                .andExpect(jsonPath("$[?(@.emailId=='" + hamId + "')].senderDomain",
+                        Matchers.contains("seedpick-ham.example")))
+                .andExpect(jsonPath("$[?(@.emailId=='" + hamId + "')].dataset",
+                        Matchers.contains("enron")));
+    }
+
+    @Test
+    void clamps_per_label_to_at_least_one() throws Exception {
+        seed("From: e@seedpick-clamp.example\nSubject: seedpick clamp\n\nbody\n",
+                GroundTruthLabel.HAM, "enron");
+
+        // perLabel=0 is clamped up to 1, so the picker still returns samples.
+        mockMvc.perform(get("/seed/samples").param("perLabel", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", Matchers.not(Matchers.empty())));
     }
 }

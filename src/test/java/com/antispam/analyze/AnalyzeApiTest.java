@@ -46,11 +46,15 @@ class AnalyzeApiTest extends AbstractPostgresIntegrationTest {
 
     @Test
     void analyzing_a_denylisted_url_email_blocks_via_hard_rule_and_persists() throws Exception {
+        // NOTE: integration tests share one Postgres container, emails dedupe by
+        // content hash, and `classifications` is append-only. Each email here is
+        // unique to this class so a deduped email never accrues a second decision
+        // from another test (which would break the singleElement assertion below).
         String raw = """
-                From: deals@promo.example
-                Subject: Act now
+                From: blocker@analyze-test.example
+                Subject: analyze block case a1
 
-                Verify your prize at http://malware.example/login today.
+                Claim your prize at http://malware.example/login now.
                 """;
 
         MvcResult result = mockMvc.perform(post("/analyze")
@@ -87,10 +91,10 @@ class AnalyzeApiTest extends AbstractPostgresIntegrationTest {
     @Test
     void analyzing_innocuous_mail_falls_through_to_the_model_path() throws Exception {
         String raw = """
-                From: newsletter@good.example
-                Subject: Weekly update
+                From: news@analyze-test.example
+                Subject: analyze allow case a1
 
-                Nothing suspicious here. Read more at https://good.example/news
+                Nothing suspicious here. Read more at https://safe.analyze-test.example/news
                 """;
 
         mockMvc.perform(post("/analyze")
@@ -105,7 +109,7 @@ class AnalyzeApiTest extends AbstractPostgresIntegrationTest {
     @Test
     void analyzing_an_existing_email_by_id_decides_without_re_pasting() throws Exception {
         IngestResult ingested = ingestService.ingest(
-                "From: seed@promo.example\nSubject: prize\n\nClick http://malware.example/win\n"
+                "From: byid@analyze-test.example\nSubject: analyze byid case a1\n\nClick http://malware.example/win\n"
                         .getBytes(StandardCharsets.UTF_8),
                 "seed");
 
