@@ -4,6 +4,11 @@ app:
   postgres-url: jdbc:postgresql://localhost:5432/antispam_test
   redis-url: redis://localhost:6379
   kafka-bootstrap-servers: localhost:9092
+  # The event spine is off by default in tests so the full-context tests boot
+  # without a broker (a no-op publisher stands in). The Kafka spine integration
+  # test re-enables it and points at a Testcontainers broker.
+  kafka:
+    enabled: false
 
 # Hard-rule fixtures pinned for the integration tests, so they don't ride on the
 # editable demo defaults in the main application.yml.

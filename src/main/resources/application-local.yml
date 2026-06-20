@@ -2,11 +2,22 @@
 # startup (Flyway runs migrations), so a local Postgres must be reachable. Bring
 # one up with `docker compose up -d db` (see docker-compose.yml), then run:
 #   ./gradlew bootRun --args='--spring.profiles.active=local'
-# Redis/Kafka are still placeholders — not yet connected, only validated present.
+# Redis is still a placeholder — validated present, not yet connected.
+#
+# The Kafka event spine (story 02.01) is OFF locally by default so a plain
+# `docker compose up -d db` boot stays quiet (no broker required; a no-op
+# publisher stands in). To exercise the spine locally, run a single-broker Kafka,
+# point app.kafka-bootstrap-servers at it, and set:
+#   app.kafka.enabled: true
+#   app.kafka.raw-topic.replication-factor: 1   # one broker can't replicate x3
+# The spine is otherwise verified by the Testcontainers integration test (CI) and
+# runs against Aiven Kafka in the hosted deployment.
 app:
   postgres-url: jdbc:postgresql://localhost:5432/antispam
   redis-url: redis://localhost:6379
   kafka-bootstrap-servers: localhost:9092
+  kafka:
+    enabled: false
 
 spring:
   datasource:

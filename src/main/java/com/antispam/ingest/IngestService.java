@@ -1,5 +1,7 @@
 package com.antispam.ingest;
 
+import com.antispam.event.RawEmailEvent;
+import com.antispam.event.RawEmailPublisher;
 import com.antispam.privacy.Redaction;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -24,11 +26,13 @@ public class IngestService {
 
     private final EmailRepository repository;
     private final EmailParser parser;
+    private final RawEmailPublisher publisher;
 
     @Autowired
-    public IngestService(EmailRepository repository, EmailParser parser) {
+    public IngestService(EmailRepository repository, EmailParser parser, RawEmailPublisher publisher) {
         this.repository = repository;
         this.parser = parser;
+        this.publisher = publisher;
     }
 
     /**
@@ -50,6 +54,13 @@ public class IngestService {
         log.info("ingested email id={} source={} duplicate={} sender={} hash={}",
                 result.emailId(), result.source(), result.duplicate(),
                 Redaction.maskAddress(metadata.sender()), result.contentHashHex());
+        // Publish onto the event spine only for a genuinely new email: the persist
+        // has committed (this is the transactional-after-commit point), and a
+        // duplicate's event was already emitted on first ingest, so skipping it
+        // keeps "exactly one emails.raw message per stored email".
+        if (!result.duplicate()) {
+            publisher.publish(RawEmailEvent.of(result, metadata));
+        }
         return result;
     }
 

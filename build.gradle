@@ -35,12 +35,20 @@ dependencies {
     // RFC-822 parsing (Jakarta Mail / Angus implementation).
     implementation 'org.eclipse.angus:angus-mail:2.0.3'
 
+    // Event spine: the ingest path publishes to the emails.raw Kafka topic
+    // (story 02.01). spring-kafka supplies KafkaTemplate + KafkaAdmin (topic
+    // provisioning); the JSON value serializer ships with it.
+    implementation 'org.springframework.kafka:spring-kafka'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     // Real Postgres in integration tests so the immutability trigger and
     // ON CONFLICT idempotency are exercised against the actual database.
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
+    // Real broker for the Kafka spine integration test (story 02.01).
+    testImplementation 'org.testcontainers:kafka'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
