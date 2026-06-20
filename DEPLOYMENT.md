@@ -157,3 +157,29 @@ curl -s -X POST https://living-antispam.onrender.com/analyze \
 - **Preview CORS:** previews work live because the API allows `https://*.vercel.app`.
   If you scope CORS to an exact production origin only, preview deploys won't be
   able to call the API (the UI loads, requests fail).
+
+## Troubleshooting (issues actually hit during first setup)
+
+- **Nothing deploys / Vercel 404 / API has no `/analyze`:** the 01.05 code must be
+  **merged to `main`** first — Render and Vercel build `main`, not an open PR.
+- **Render 502, logs show `java.net.SocketException: Network is unreachable`:**
+  you used Supabase's **Direct connection** (`db.<ref>.supabase.co`, IPv6-only) —
+  Render can't route IPv6. Switch `APP_POSTGRES_URL` to the **Session pooler**
+  (`aws-0-<region>.pooler.supabase.com:5432`, IPv4) and set `APP_POSTGRES_USER` to
+  `postgres.<project-ref>`.
+- **`/info` shows `commit: "unknown"`:** the JDK build image had no `git`. Fixed in
+  the `Dockerfile` (installs git + marks `/app` a safe.directory) so the commit is
+  stamped — required for the CI live smoke test to detect the new build.
+- **Vercel build logs look "fine" but the site 404s:** the **Root Directory** isn't
+  set to `console`, so Vercel builds the repo root (no `package.json` there) and
+  produces nothing. Set **Project → Settings → Build & Deployment → Root Directory
+  → `console`** and redeploy. A correct build log says `next build` + lists routes.
+- **Vercel clean domain 404 even though a build succeeded:** the domain is attached
+  to **Production** but there's no **Production** deployment (your builds were
+  Previews). Either **Promote to Production** the Ready deployment (Deployments →
+  ⋯ → Promote to Production) or set the production branch to `main`
+  (**Settings → Environments → Production → Branch Tracking**, in newer UI — it's
+  no longer under Settings → Git) and push.
+- **Vercel deployment URL returns 401 "Authentication Required":** that's
+  **Deployment Protection** (Vercel Authentication). For a public demo, disable it:
+  **Settings → Deployment Protection → Vercel Authentication → Disabled**.
