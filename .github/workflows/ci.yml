@@ -36,21 +36,91 @@ jobs:
           name: living-antispam-jar
           path: build/libs/*.jar
 
+  console:
+    name: Console build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Unit tests + production build
+        run: |
+          npm test
+          npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (route-stubbed)
+        run: npm run e2e
+
   deploy:
-    name: Deploy to hosted URL
-    needs: build-test
+    name: Deploy API + live smoke test
+    needs: [build-test, console]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      # Render auto-deploys from git; this hook makes the deploy explicit and
-      # ordered after a green build. Set RENDER_DEPLOY_HOOK_URL in repo secrets.
-      # The step is skipped (not failed) if the secret is absent.
-      - name: Trigger Render deploy
+      # Render's autoDeploy is off, so this hook is the deploy trigger — and it
+      # only runs after build-test + console are green. Set RENDER_DEPLOY_HOOK_URL
+      # in repo secrets; the step is skipped (not failed) if the secret is absent.
+      - name: Trigger Render deploy (API)
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           if [ -z "$HOOK" ]; then
-            echo "RENDER_DEPLOY_HOOK_URL not set — skipping explicit deploy trigger."
+            echo "RENDER_DEPLOY_HOOK_URL not set — skipping API deploy trigger."
             exit 0
           fi
           curl -fsS -X POST "$HOOK"
+          echo "Render deploy triggered for commit ${GITHUB_SHA}."
+
+      # Prove the new build is actually live: poll /info until it reports THIS
+      # commit, then assert a real decision. Set the LIVE_API_URL repo *variable*
+      # (e.g. https://living-antispam.onrender.com); skipped if unset.
+      - name: Smoke-test the live API
+        env:
+          API: ${{ vars.LIVE_API_URL }}
+        run: |
+          if [ -z "$API" ]; then
+            echo "LIVE_API_URL variable not set — skipping live smoke test."
+            exit 0
+          fi
+          API="${API%/}"
+          SHORT="$(echo "$GITHUB_SHA" | cut -c1-7)"
+          echo "Waiting for $API to report commit $SHORT (Render rebuild can take several minutes)…"
+          live=""
+          for i in $(seq 1 60); do
+            commit="$(curl -fsS --max-time 10 "$API/info" 2>/dev/null | jq -r '.build.commit // empty')"
+            echo "  [$i] live commit: ${commit:-<unreachable>}"
+            if [ "$commit" = "$SHORT" ]; then live=1; break; fi
+            sleep 15
+          done
+          if [ -z "$live" ]; then
+            echo "::error::New build (commit $SHORT) did not go live within ~15 min."
+            exit 1
+          fi
+
+          echo "New build is live. Asserting health…"
+          curl -fsS --max-time 10 "$API/health" | grep -q '"status":"UP"' \
+            || { echo "::error::/health not UP"; exit 1; }
+
+          echo "Asserting a denylisted-URL email is blocked…"
+          resp="$(curl -fsS --max-time 20 -X POST "$API/analyze" \
+            -H 'Content-Type: application/json' \
+            -d '{"raw":"From: deals@promo.example\nSubject: Act now\n\nVerify your prize at http://malware.example/login today.\n","source":"ci-smoke"}')"
+          echo "  /analyze -> $resp"
+          echo "$resp" | grep -q '"tier":"block"' \
+            || { echo "::error::live /analyze did not return tier=block"; exit 1; }
+          echo "✅ Live smoke test passed: $API is serving the new build and deciding correctly."

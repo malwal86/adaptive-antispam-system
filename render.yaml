@@ -1,9 +1,9 @@
-# Render blueprint for the always-on hosted demo. A push to `main` triggers an
-# automatic Docker build + deploy (autoDeploy: true); Render polls /health to
-# confirm the new build is live before routing traffic to it.
+# Render blueprint — the Java API only. The Next.js console deploys separately on
+# Vercel (see DEPLOYMENT.md), so it is intentionally not a service here.
 #
-# The managed-service URLs are marked `sync: false` — set the real values in the
-# Render dashboard (or wire them from Render add-ons). Nothing secret lives here.
+# autoDeploy is OFF: deploys are gated by CI. A green build on `main` triggers this
+# service's deploy hook (.github/workflows/ci.yml), so a red build never ships.
+# Secrets/URLs are `sync: false` — set the real values in the Render dashboard.
 services:
   - type: web
     name: living-antispam
@@ -11,12 +11,24 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     region: oregon
-    autoDeploy: true
+    autoDeploy: false
     healthCheckPath: /health
     envVars:
+      # --- Postgres (Supabase): the source-of-truth store. Set the real values. ---
       - key: APP_POSTGRES_URL
+        sync: false # jdbc:postgresql://db.<ref>.supabase.co:5432/postgres
+      - key: APP_POSTGRES_USER
         sync: false
+      - key: APP_POSTGRES_PASSWORD
+        sync: false
+      # --- Redis/Kafka are validated-present but not yet connected (their epics
+      #     haven't landed). Placeholders satisfy the fail-fast check and let the
+      #     app boot; swap for real coordinates when Epics 02/03 wire them up. ---
       - key: APP_REDIS_URL
-        sync: false
+        value: redis://placeholder:6379
       - key: APP_KAFKA_BOOTSTRAP_SERVERS
+        value: placeholder:9092
+      # --- CORS allow-list = the console's Vercel origin(s). Comma-separated;
+      #     patterns allowed, e.g. "https://*.vercel.app,https://<your-domain>". ---
+      - key: ANTISPAM_CONSOLE_ALLOWED_ORIGINS
         sync: false

@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+build
+npm-debug.log*
+.git
+.env*.local
+playwright-report
+test-results
+.turbo
+*.tsbuildinfo
+README.md

@@ -7,6 +7,9 @@ build/
 node_modules/
 .next/
 out/
+# The console is its own deployable (Vercel / console/Dockerfile) — not part of
+# the Java API image.
+console/
 
 # Local-only working context (not needed in the image).
 planning/
