@@ -73,47 +73,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Render's autoDeploy is off, so this hook is the deploy trigger — and it
-      # only runs after build-test + console are green. Set RENDER_DEPLOY_HOOK_URL
-      # in repo secrets; the step is skipped (not failed) if the secret is absent.
-      - name: Trigger Render deploy (API)
+      # only runs after build-test + console are green. Needs RENDER_DEPLOY_HOOK_URL
+      # (secret) + LIVE_API_URL (variable); the job no-ops if either is unset.
+      #
+      # "Is the new build live?" is detected via /info's build.time, NOT the commit:
+      # Render's build context has no .git, so /info's commit is always "unknown",
+      # but build.time changes on every rebuild — a reliable version marker that
+      # needs no Render API key.
+      - name: Deploy to Render + smoke-test the live API
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          if [ -z "$HOOK" ]; then
-            echo "RENDER_DEPLOY_HOOK_URL not set — skipping API deploy trigger."
-            exit 0
-          fi
-          curl -fsS -X POST "$HOOK"
-          echo "Render deploy triggered for commit ${GITHUB_SHA}."
-
-      # Prove the new build is actually live: poll /info until it reports THIS
-      # commit, then assert a real decision. Set the LIVE_API_URL repo *variable*
-      # (e.g. https://living-antispam.onrender.com); skipped if unset.
-      - name: Smoke-test the live API
-        env:
           API: ${{ vars.LIVE_API_URL }}
         run: |
-          if [ -z "$API" ]; then
-            echo "LIVE_API_URL variable not set — skipping live smoke test."
+          if [ -z "$HOOK" ] || [ -z "$API" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL secret or LIVE_API_URL variable not set — skipping deploy + smoke."
             exit 0
           fi
           API="${API%/}"
-          SHORT="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          echo "Waiting for $API to report commit $SHORT (Render rebuild can take several minutes)…"
+
+          before="$(curl -fsS --max-time 15 "$API/info" 2>/dev/null | jq -r '.build.time // empty')"
+          echo "current live build.time: ${before:-<none/unreachable>}"
+
+          echo "Triggering Render deploy…"
+          curl -fsS -X POST "$HOOK" >/dev/null
+          echo "Triggered. Waiting for the new build to go live (Render rebuilds + cold start can take several minutes)…"
+
           live=""
-          for i in $(seq 1 60); do
-            commit="$(curl -fsS --max-time 10 "$API/info" 2>/dev/null | jq -r '.build.commit // empty')"
-            echo "  [$i] live commit: ${commit:-<unreachable>}"
-            if [ "$commit" = "$SHORT" ]; then live=1; break; fi
+          for i in $(seq 1 80); do
+            now="$(curl -fsS --max-time 15 "$API/info" 2>/dev/null | jq -r '.build.time // empty')"
+            echo "  [$i] live build.time: ${now:-<unreachable>}"
+            if [ -n "$now" ] && [ "$now" != "$before" ]; then live=1; break; fi
             sleep 15
           done
           if [ -z "$live" ]; then
-            echo "::error::New build (commit $SHORT) did not go live within ~15 min."
+            echo "::error::New build did not go live within ~20 min."
             exit 1
           fi
 
           echo "New build is live. Asserting health…"
-          curl -fsS --max-time 10 "$API/health" | grep -q '"status":"UP"' \
+          curl -fsS --max-time 15 "$API/health" | grep -q '"status":"UP"' \
             || { echo "::error::/health not UP"; exit 1; }
 
           echo "Asserting a denylisted-URL email is blocked…"
@@ -123,4 +121,4 @@ jobs:
           echo "  /analyze -> $resp"
           echo "$resp" | grep -q '"tier":"block"' \
             || { echo "::error::live /analyze did not return tier=block"; exit 1; }
-          echo "✅ Live smoke test passed: $API is serving the new build and deciding correctly."
+          echo "✅ Live smoke test passed: the new build is serving and deciding correctly."
