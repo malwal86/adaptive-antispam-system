@@ -14,6 +14,23 @@ spring:
   flyway:
     enabled: true
 
+  # Kafka producer for the event spine (story 02.01). Broker location reuses the
+  # single APP_KAFKA_BOOTSTRAP_SERVERS contract (relaxed-bound as
+  # app.kafka-bootstrap-servers) so there is one place it is configured.
+  # Durability: acks=all + the idempotent producer mean a transient broker hiccup
+  # is retried internally without duplicating or losing the record. max.block.ms
+  # bounds how long a send may wait on an unhealthy broker so ingest stays
+  # responsive (the email is already persisted; the publish is after-commit).
+  kafka:
+    bootstrap-servers: ${app.kafka-bootstrap-servers:}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        enable.idempotence: true
+        max.block.ms: 10000
+
 # Bind to the port the host injects (Render/Railway/Fly all set PORT); default
 # 8080 for local runs.
 server:
@@ -44,6 +61,22 @@ management:
 # defaults; real denylists / phish feeds load through the seed path (story 01.03)
 # and operational tuning later. A host matches the denylist when it equals an
 # entry or is a subdomain of it.
+# Event-spine topology (story 02.01), bound by KafkaTopicProperties. Distinct
+# from app.kafka-bootstrap-servers (the broker location): this is the emails.raw
+# topic shape and the publish on/off switch. `enabled: false` (set in the test
+# profile, or anywhere without a broker) swaps in a no-op publisher so ingest runs
+# without Kafka. Partitions bound the per-sender consumer parallelism; retention
+# is the spine's replay window (Postgres remains the source of truth). On a
+# single-broker local/test cluster, override replication-factor to 1.
+app:
+  kafka:
+    enabled: true
+    raw-topic:
+      name: emails.raw
+      partitions: 6
+      replication-factor: 3
+      retention: 7d
+
 antispam:
   # The analyzer/console (story 01.05, Epic 12) is a separate Next.js service that
   # calls this API cross-origin. Allow its origin(s) here; default is the local
