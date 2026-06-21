@@ -1,5 +1,19 @@
 # Test profile: placeholder service config so the context boots in CI without
 # real Postgres/Redis/Kafka. Mirrors the shape of the production env contract.
+
+# Spring Data Redis URL. The base application.yml defaults this to ${APP_REDIS_URL:},
+# i.e. an empty string when no Redis is configured — and Spring Boot's Redis
+# auto-config rejects an empty URL (RedisUrlSyntaxException), crashing every
+# full-context @SpringBootTest in CI even though the cache is disabled here. A
+# syntactically valid placeholder fixes that: Lettuce connects lazily and the cache
+# bean is conditional-off in tests, so nothing ever dials it. The Redis cache
+# integration test overrides this via @DynamicPropertySource to point at its
+# Testcontainers Redis.
+spring:
+  data:
+    redis:
+      url: redis://localhost:6379
+
 app:
   postgres-url: jdbc:postgresql://localhost:5432/antispam_test
   redis-url: redis://localhost:6379
