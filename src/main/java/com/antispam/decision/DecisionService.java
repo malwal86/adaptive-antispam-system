@@ -17,6 +17,12 @@ import org.springframework.stereotype.Service;
  * without the model ever being invoked — the explicit "skip the model" guarantee
  * from PRD §Subsystem 1. Later stages (calibration, fusion, burst override, LLM
  * routing) extend this pipeline in their epics.
+ *
+ * <p><b>Deciding vs. persisting are separable.</b> {@link #evaluate} runs the
+ * pipeline and returns the in-memory {@link DecisionOutcome} without writing a row;
+ * {@link #decide} is {@code evaluate} plus persistence. The split lets a read-only
+ * consumer derive a verdict for an email — e.g. reputation accrual off the event
+ * spine (story 03.05) — without minting a second {@link Classification} for it.
  */
 @Service
 public class DecisionService {
@@ -38,13 +44,25 @@ public class DecisionService {
     }
 
     /**
+     * Runs the decision pipeline for {@code email} and returns the verdict
+     * <em>without persisting it</em>: hard rules first, the model path only if none
+     * override. Deterministic for a given email, so a caller can derive the verdict
+     * more than once (e.g. on redelivery) and get the same answer.
+     *
+     * @return the in-memory {@link DecisionOutcome}
+     */
+    public DecisionOutcome evaluate(Email email) {
+        return hardRuleEngine.evaluate(email)
+                .orElseGet(() -> contentClassifier.classify(email));
+    }
+
+    /**
      * Decides {@code email} and records the decision.
      *
      * @return the persisted {@link Classification}
      */
     public Classification decide(Email email) {
-        DecisionOutcome outcome = hardRuleEngine.evaluate(email)
-                .orElseGet(() -> contentClassifier.classify(email));
+        DecisionOutcome outcome = evaluate(email);
         Classification classification = repository.save(email.id(), outcome);
         // No PII here: only the email id, route, verdict, and reason codes.
         log.info("decided email={} route={} decision={} reasons={} latencyMs={}",

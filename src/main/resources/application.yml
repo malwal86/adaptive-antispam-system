@@ -104,6 +104,18 @@ app:
       partitions: 6
       replication-factor: 3
       retention: 7d
+    # Per-sender reputation accrual consumer (story 03.05). A second, independent
+    # consumer group on emails.raw, parallel to the feature extractor. Because the
+    # topic is keyed by sender, each partition is one sender-shard owned by exactly
+    # one consumer thread — that assignment IS the per-sender serialization, so
+    # accrual needs no application lock. concurrency defaults to the partition count
+    # so every shard can run on its own thread; any value up to partitions preserves
+    # per-partition ordering. Accepted demo-scale tradeoff: a hot sender's burst all
+    # lands on one partition (skew), surfaced by the antispam.reputation.accrual
+    # partition-skew metric — a throughput imbalance, never a correctness loss.
+    reputation-consumer:
+      group-id: reputation-accrual
+      concurrency: 6
 
 antispam:
   # The analyzer/console (story 01.05, Epic 12) is a separate Next.js service that
