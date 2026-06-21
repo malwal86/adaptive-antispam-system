@@ -73,8 +73,7 @@ public class KnownBadUrlRule implements HardRule {
 
     private static boolean matchesDenylist(String host, List<String> denylist) {
         for (String entry : denylist) {
-            String bad = entry.toLowerCase(Locale.ROOT);
-            if (host.equals(bad) || host.endsWith("." + bad)) {
+            if (Hosts.isHostOrSubdomainOf(host, entry.toLowerCase(Locale.ROOT))) {
                 return true;
             }
         }

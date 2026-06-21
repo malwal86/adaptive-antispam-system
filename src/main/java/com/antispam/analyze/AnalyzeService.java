@@ -70,6 +70,6 @@ public class AnalyzeService {
      */
     public Optional<Classification> latestDecision(UUID emailId) {
         List<Classification> history = classifications.findByEmailId(emailId);
-        return history.isEmpty() ? Optional.empty() : Optional.of(history.get(history.size() - 1));
+        return history.isEmpty() ? Optional.empty() : Optional.of(history.getLast());
     }
 }

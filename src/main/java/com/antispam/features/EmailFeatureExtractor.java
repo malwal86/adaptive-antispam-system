@@ -6,17 +6,15 @@ import com.antispam.features.FeatureSet.LinkFeatures;
 import com.antispam.features.FeatureSet.TextFeatures;
 import com.antispam.features.FeatureSet.TimingFeatures;
 import com.antispam.ingest.Email;
+import com.antispam.ingest.MimeMessages;
 import com.antispam.ingest.ParsedEmail;
 import jakarta.mail.Multipart;
 import jakarta.mail.Part;
-import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
-import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.HashSet;
-import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -48,7 +46,10 @@ public class EmailFeatureExtractor {
     /** Token returned for an auth method the header did not assert. */
     private static final String AUTH_UNKNOWN = "unknown";
 
-    private static final Session SESSION = Session.getInstance(new Properties());
+    /** {@code method=result} matchers for the three auth methods, precompiled (one per email, ×3). */
+    private static final Pattern SPF_RESULT = authPattern("spf");
+    private static final Pattern DKIM_RESULT = authPattern("dkim");
+    private static final Pattern DMARC_RESULT = authPattern("dmarc");
 
     /** http/https URLs, stopping at whitespace, quotes, angle brackets, or a closing paren. */
     private static final Pattern URL = Pattern.compile("(?i)https?://[^\\s\"'<>)]+");
@@ -244,16 +245,21 @@ public class EmailFeatureExtractor {
      */
     public static AuthFeatures authFeatures(String authResultsHeader) {
         return new AuthFeatures(
-                authResult(authResultsHeader, "spf"),
-                authResult(authResultsHeader, "dkim"),
-                authResult(authResultsHeader, "dmarc"));
+                authResult(authResultsHeader, SPF_RESULT),
+                authResult(authResultsHeader, DKIM_RESULT),
+                authResult(authResultsHeader, DMARC_RESULT));
     }
 
-    private static String authResult(String header, String method) {
+    /** Compiles the case-insensitive {@code <method>=<result>} matcher for one auth method. */
+    private static Pattern authPattern(String method) {
+        return Pattern.compile("(?i)\\b" + method + "\\s*=\\s*([a-z]+)");
+    }
+
+    private static String authResult(String header, Pattern methodResult) {
         if (!isPresent(header)) {
             return AUTH_UNKNOWN;
         }
-        Matcher m = Pattern.compile("(?i)\\b" + method + "\\s*=\\s*([a-z]+)").matcher(header);
+        Matcher m = methodResult.matcher(header);
         return m.find() ? m.group(1).toLowerCase() : AUTH_UNKNOWN;
     }
 
@@ -268,25 +274,14 @@ public class EmailFeatureExtractor {
     }
 
     private static Body body(byte[] rawContent) {
-        MimeMessage message = toMessage(rawContent);
+        MimeMessage message = MimeMessages.parse(rawContent);
         if (message == null) {
             return new Body("", "", null);
         }
         StringBuilder raw = new StringBuilder();
         StringBuilder display = new StringBuilder();
         collectText(message, raw, display);
-        return new Body(raw.toString(), display.toString().strip(), header(message, "Reply-To"));
-    }
-
-    private static MimeMessage toMessage(byte[] rawContent) {
-        if (rawContent == null || rawContent.length == 0) {
-            return null;
-        }
-        try {
-            return new MimeMessage(SESSION, new ByteArrayInputStream(rawContent));
-        } catch (Exception e) {
-            return null;
-        }
+        return new Body(raw.toString(), display.toString().strip(), MimeMessages.header(message, "Reply-To"));
     }
 
     /** Recursively appends text parts: plain text to both views, HTML to raw and stripped to display. */
@@ -311,15 +306,6 @@ public class EmailFeatureExtractor {
 
     private static String stripHtml(String html) {
         return HTML_TAG.matcher(html).replaceAll(" ");
-    }
-
-    private static String header(MimeMessage message, String name) {
-        try {
-            String value = message.getHeader(name, ", ");
-            return isPresent(value) ? value : null;
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     // ---- Shared helpers -----------------------------------------------------
