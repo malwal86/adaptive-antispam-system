@@ -97,6 +97,14 @@ antispam:
   console:
     allowed-origins:
       - http://localhost:3000
+  # Beta-reputation prior (story 03.01). reputation = (good+alpha)/(good+bad+alpha+beta);
+  # alpha/beta are pseudo-counts of prior good/bad observations. 1/1 is a uniform
+  # prior, so a brand-new sender starts at mean 0.5 with maximum variance — the wide
+  # uncertainty that routes unseen senders to the LLM (Epic 05). Tunable here (not in
+  # code) and validated positive (a proper Beta needs alpha, beta > 0).
+  reputation:
+    alpha: 1.0
+    beta: 1.0
   seed:
     enabled: false
     corpus-dir: seed-corpus
