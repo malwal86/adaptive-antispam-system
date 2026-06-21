@@ -5,9 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import com.antispam.AbstractPostgresIntegrationTest;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -18,10 +24,26 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * per the formula, the cached score equals the recompute-from-events, changes are
  * appends (the table rejects in-place mutation), and counts are order-independent.
  *
+ * <p><b>Decay is held out here.</b> The clock is pinned to an instant <em>before</em>
+ * any event is recorded, so every event's age is negative and clamps to zero — read-
+ * time decay (story 03.02) is identically 1.0 and these accrual assertions stay exact.
+ * Decay's own behaviour is covered by {@link ReputationDecayIntegrationTest}.
+ *
  * <p>Each test uses a unique sender key so the shared container/context can run them
  * in any order without cross-talk.
  */
 class ReputationAccrualIntegrationTest extends AbstractPostgresIntegrationTest {
+
+    @TestConfiguration
+    static class FrozenPastClockConfig {
+        // Before any event's occurred_at (which the DB stamps at the real now), so the
+        // read-time age clamps to zero and no evidence has decayed yet.
+        @Bean
+        @Primary
+        Clock clock() {
+            return Clock.fixed(Instant.parse("2000-01-01T00:00:00Z"), ZoneOffset.UTC);
+        }
+    }
 
     @Autowired
     private ReputationService service;
