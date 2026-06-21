@@ -11,4 +11,14 @@ package com.antispam.reputation;
  * @param bad  weighted sum of {@code BAD} signals ({@code 0} when none)
  */
 public record ReputationCounts(double good, double bad) {
+
+    /**
+     * These counts with both buckets scaled by {@code factor} — used to age a folded
+     * cache snapshot forward to the read instant (story 03.04). Because exponential
+     * decay composes multiplicatively (story 03.02), scaling the aggregate by one
+     * factor equals decaying every underlying event by that factor.
+     */
+    public ReputationCounts scaledBy(double factor) {
+        return new ReputationCounts(good * factor, bad * factor);
+    }
 }

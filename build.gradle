@@ -40,6 +40,11 @@ dependencies {
     // provisioning); the JSON value serializer ships with it.
     implementation 'org.springframework.kafka:spring-kafka'
 
+    // Reputation read cache (story 03.04): Redis is the materialized cache in front of
+    // the Postgres reputation_events source of truth. Lettuce (the default client) ships
+    // with the starter; the cache degrades to Postgres when Redis is unavailable.
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     // Real Postgres in integration tests so the immutability trigger and
     // ON CONFLICT idempotency are exercised against the actual database.

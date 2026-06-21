@@ -3,6 +3,7 @@ package com.antispam.reputation;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.OptionalDouble;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -111,6 +112,16 @@ public class ReputationRepository {
     /** Upserts the sender's cached reputation mean (refreshed on every recorded signal). */
     public void saveScore(String senderKey, double score) {
         jdbc.update(SAVE_SCORE_SQL, senderKey, score);
+    }
+
+    /**
+     * Every sender that has at least one event — the set to rebuild the Redis cache over
+     * (story 03.04). Drawn from the event log (the truth), not the {@code senders} cache,
+     * so a dropped/rebuilt cache still enumerates every real sender.
+     */
+    public List<String> allSenderKeys() {
+        return jdbc.queryForList(
+                "select distinct sender_key from reputation_events", String.class);
     }
 
     /**

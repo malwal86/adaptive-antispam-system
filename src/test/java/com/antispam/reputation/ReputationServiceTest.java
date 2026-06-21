@@ -4,13 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.antispam.reputation.cache.ReputationReadCache;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,12 +22,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * The orchestration contract above the SQL (stories 03.01–03.03): recording a signal
+ * The orchestration contract above the SQL (stories 03.01–03.04): recording a signal
  * <em>appends</em> an event in the bucket its auth earns and then recomputes the gated
  * reputation <em>from the events</em>, caching the authenticated (earned) mean; reading
- * recomputes from the events too, as of the injected {@link Clock} instant with the
- * configured decay. The repository is mocked so this pins that wiring in isolation; the
- * real SQL, decay, and cap are exercised against Postgres in the integration tests.
+ * serves the cache, falling back to the event log on a miss, as of the injected
+ * {@link Clock} instant with the configured decay. The repository and cache are mocked so
+ * this pins that wiring in isolation; the real SQL, decay, cap, and Redis round-trip are
+ * exercised against Postgres/Redis in the integration tests.
  */
 @ExtendWith(MockitoExtension.class)
 class ReputationServiceTest {
@@ -37,11 +41,14 @@ class ReputationServiceTest {
     @Mock
     private ReputationRepository repository;
 
+    @Mock
+    private ReputationReadCache cache;
+
     private ReputationService service;
 
     @BeforeEach
     void setUp() {
-        service = new ReputationService(repository, PRIORS, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new ReputationService(repository, PRIORS, Clock.fixed(NOW, ZoneOffset.UTC), cache);
     }
 
     private static BucketedReputationCounts authenticated(double good, double bad) {
@@ -80,6 +87,7 @@ class ReputationServiceTest {
 
     @Test
     void reading_an_unseen_sender_returns_the_high_variance_prior_in_both_views() {
+        when(cache.get(SENDER)).thenReturn(Optional.empty());
         when(repository.countsFor(eq(SENDER), any(), any())).thenReturn(authenticated(0, 0));
 
         GatedReputation reputation = service.gatedReputation(SENDER);
@@ -94,6 +102,7 @@ class ReputationServiceTest {
         // Strong authenticated trust (8/2) but the unauthenticated bucket is all-good
         // spoof traffic: an aligned email gets the earned 0.75, an unauthenticated one
         // is capped at neutral and inherits none of it.
+        when(cache.get(SENDER)).thenReturn(Optional.empty());
         when(repository.countsFor(eq(SENDER), any(), any()))
                 .thenReturn(new BucketedReputationCounts(
                         new ReputationCounts(8, 2), new ReputationCounts(50, 0)));
@@ -106,6 +115,7 @@ class ReputationServiceTest {
     void reading_totals_the_log_as_of_the_clock_with_the_configured_decay() {
         // Decay is read-time: the score is summed as of the clock instant using the
         // configured half-life, so a later read decays older evidence without any write.
+        when(cache.get(SENDER)).thenReturn(Optional.empty());
         when(repository.countsFor(eq(SENDER), any(), any())).thenReturn(authenticated(4, 1));
 
         service.gatedReputation(SENDER);
@@ -115,5 +125,33 @@ class ReputationServiceTest {
         verify(repository).countsFor(eq(SENDER), readAt.capture(), decay.capture());
         assertThat(readAt.getValue()).isEqualTo(NOW);
         assertThat(decay.getValue().halfLife()).isEqualTo(HALF_LIFE);
+    }
+
+    @Test
+    void reading_serves_the_cached_snapshot_without_touching_postgres() {
+        // A cache hit is the fast path: the folded snapshot is aged to now and returned,
+        // with no event-log replay (AC 1).
+        CachedReputation snapshot = new CachedReputation(authenticated(8, 2), NOW);
+        when(cache.get(SENDER)).thenReturn(Optional.of(snapshot));
+
+        GatedReputation reputation = service.gatedReputation(SENDER);
+
+        assertThat(reputation.authenticated().mean()).isCloseTo(0.75, within(1e-12));
+        verify(repository, never()).countsFor(any(), any(), any());
+    }
+
+    @Test
+    void a_cache_miss_rebuilds_from_events_and_populates_the_snapshot() {
+        // A miss replays Postgres and writes the snapshot back, so the next read is a hit
+        // yielding the identical score (AC 2).
+        when(cache.get(SENDER)).thenReturn(Optional.empty());
+        when(repository.countsFor(eq(SENDER), any(), any())).thenReturn(authenticated(8, 2));
+
+        service.gatedReputation(SENDER);
+
+        ArgumentCaptor<CachedReputation> populated = ArgumentCaptor.forClass(CachedReputation.class);
+        verify(cache).put(eq(SENDER), populated.capture());
+        assertThat(populated.getValue().foldedAt()).isEqualTo(NOW);
+        assertThat(populated.getValue().foldedCounts().authenticated().good()).isEqualTo(8.0);
     }
 }
