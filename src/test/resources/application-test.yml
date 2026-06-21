@@ -10,6 +10,14 @@
 # integration test overrides this via @DynamicPropertySource to point at its
 # Testcontainers Redis.
 spring:
+  # The reputation integration tests supply their own @Primary Clock via a nested
+  # @TestConfiguration to drive a synthetic timeline. That bean shares the name of
+  # the application's ClockConfig#clock bean, which Boot's default (overriding
+  # disabled) rejects with BeanDefinitionOverrideException. Allow overriding in the
+  # test profile so a test can deliberately replace an application bean — the
+  # standard Spring testing escape hatch.
+  main:
+    allow-bean-definition-overriding: true
   data:
     redis:
       url: redis://localhost:6379

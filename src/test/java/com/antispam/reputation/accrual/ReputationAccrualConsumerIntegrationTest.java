@@ -75,10 +75,14 @@ class ReputationAccrualConsumerIntegrationTest extends AbstractPostgresIntegrati
         assertThat(eventCount(senderKey)).isEqualTo(burst);
 
         // The recompute-from-events count matches the burst (decay over seconds is ~1.0),
-        // and the materialized score equals that recompute — serialization held.
+        // and the materialized score tracks that recompute — serialization held, so the
+        // cache reflects all N events, not a stale subset. The tolerance absorbs the tiny
+        // read-time decay drift between the last write and this read (seconds against a
+        // 7-day half-life); a genuinely stale cache, short several events, would differ by
+        // orders of magnitude more.
         BetaReputation reputation = reputationService.currentReputation(senderKey);
         assertThat(reputation.count()).isCloseTo(burst, within(0.01));
-        assertThat(materializedScore(senderKey)).isCloseTo(reputation.mean(), within(1e-9));
+        assertThat(materializedScore(senderKey)).isCloseTo(reputation.mean(), within(1e-3));
     }
 
     @Test
