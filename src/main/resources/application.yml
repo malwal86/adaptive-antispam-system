@@ -14,6 +14,16 @@ spring:
   flyway:
     enabled: true
 
+  # Redis is the materialized reputation read cache (story 03.04), in front of the
+  # Postgres reputation_events source of truth. The connection reuses a single
+  # APP_REDIS_URL contract (Upstash gives a rediss:// URL with TLS); empty when no
+  # Redis is configured. The cache is only consulted when antispam.reputation.cache
+  # is enabled, and it degrades to Postgres on any Redis error, so an unset/empty URL
+  # locally is harmless.
+  data:
+    redis:
+      url: ${APP_REDIS_URL:}
+
   # Kafka producer for the event spine (story 02.01). Broker location reuses the
   # single APP_KAFKA_BOOTSTRAP_SERVERS contract (relaxed-bound as
   # app.kafka-bootstrap-servers) so there is one place it is configured.
@@ -57,6 +67,12 @@ management:
       base-path: /
       exposure:
         include: health,info
+  # The reputation cache degrades to Postgres when Redis is down (story 03.04), so a
+  # Redis outage must NOT mark the app unhealthy and pull it from the load balancer.
+  # Exclude Redis from the health aggregate to keep liveness independent of the cache.
+  health:
+    redis:
+      enabled: false
   info:
     build:
       enabled: true
@@ -109,6 +125,13 @@ antispam:
     alpha: 1.0
     beta: 1.0
     half-life: 7d
+    # Redis materialized read cache (story 03.04). Off by default so local/dev and the
+    # existing Postgres-only tests serve reputation straight from the event log; the
+    # hosted deploy sets ANTISPAM_REPUTATION_CACHE_ENABLED=true with APP_REDIS_URL.
+    # When on, reads are served from Redis and rebuilt from Postgres on a miss; when
+    # Redis is unavailable the read transparently falls back to Postgres.
+    cache:
+      enabled: ${ANTISPAM_REPUTATION_CACHE_ENABLED:false}
   seed:
     enabled: false
     corpus-dir: seed-corpus

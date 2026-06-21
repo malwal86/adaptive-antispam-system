@@ -1,6 +1,7 @@
-# Local managed-service dependencies for development. Currently just Postgres
-# (story 01.02); Redis and Kafka will be added as their stories land.
-#   docker compose up -d db
+# Local managed-service dependencies for development: Postgres (story 01.02, the
+# reputation source of truth) and Redis (story 03.04, the materialized read cache).
+# Kafka will be added as its story lands.
+#   docker compose up -d db redis
 services:
   db:
     image: postgres:16-alpine
@@ -14,6 +15,19 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d antispam"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Materialized reputation read cache. Mirrors Upstash in production; the cache is
+  # rebuildable from Postgres, so this needs no persistence. Point the app at it with
+  # APP_REDIS_URL=redis://localhost:6379 and ANTISPAM_REPUTATION_CACHE_ENABLED=true.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -14,4 +14,14 @@ package com.antispam.reputation;
 public record BucketedReputationCounts(
         ReputationCounts authenticated,
         ReputationCounts unauthenticated) {
+
+    /**
+     * Both buckets scaled by {@code factor} — ages a folded cache snapshot forward to
+     * the read instant (story 03.04) by applying one read-time decay factor to the
+     * aggregate, which equals per-event decay by composability (story 03.02).
+     */
+    public BucketedReputationCounts scaledBy(double factor) {
+        return new BucketedReputationCounts(
+                authenticated.scaledBy(factor), unauthenticated.scaledBy(factor));
+    }
 }
