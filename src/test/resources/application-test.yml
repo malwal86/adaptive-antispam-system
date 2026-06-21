@@ -1,5 +1,27 @@
 # Test profile: placeholder service config so the context boots in CI without
 # real Postgres/Redis/Kafka. Mirrors the shape of the production env contract.
+
+# Spring Data Redis URL. The base application.yml defaults this to ${APP_REDIS_URL:},
+# i.e. an empty string when no Redis is configured — and Spring Boot's Redis
+# auto-config rejects an empty URL (RedisUrlSyntaxException), crashing every
+# full-context @SpringBootTest in CI even though the cache is disabled here. A
+# syntactically valid placeholder fixes that: Lettuce connects lazily and the cache
+# bean is conditional-off in tests, so nothing ever dials it. The Redis cache
+# integration test overrides this via @DynamicPropertySource to point at its
+# Testcontainers Redis.
+spring:
+  # The reputation integration tests supply their own @Primary Clock via a nested
+  # @TestConfiguration to drive a synthetic timeline. That bean shares the name of
+  # the application's ClockConfig#clock bean, which Boot's default (overriding
+  # disabled) rejects with BeanDefinitionOverrideException. Allow overriding in the
+  # test profile so a test can deliberately replace an application bean — the
+  # standard Spring testing escape hatch.
+  main:
+    allow-bean-definition-overriding: true
+  data:
+    redis:
+      url: redis://localhost:6379
+
 app:
   postgres-url: jdbc:postgresql://localhost:5432/antispam_test
   redis-url: redis://localhost:6379
@@ -9,6 +31,18 @@ app:
   # test re-enables it and points at a Testcontainers broker.
   kafka:
     enabled: false
+    # Single consumer thread per group in tests. The single-broker Testcontainers
+    # cluster on a constrained CI runner is easily overloaded: with the production
+    # defaults (feature 3 + reputation 6 = 9 threads) all joining and replaying the
+    # backlog at once, the after-commit producer can be starved of broker metadata
+    # past its max.block.ms and silently drop a publish — which surfaced as a flaky
+    # KafkaSpineIntegrationTest timeout. Tests don't need consumer parallelism (per-
+    # partition ordering holds at any concurrency), so cap both groups at 1 to keep
+    # the broker calm. Production keeps its application.yml defaults.
+    feature-consumer:
+      concurrency: 1
+    reputation-consumer:
+      concurrency: 1
 
 # Hard-rule fixtures pinned for the integration tests, so they don't ride on the
 # editable demo defaults in the main application.yml.

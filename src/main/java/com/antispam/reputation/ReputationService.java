@@ -150,8 +150,7 @@ public class ReputationService {
         Instant now = clock.instant();
         List<String> senders = repository.allSenderKeys();
         for (String senderKey : senders) {
-            BucketedReputationCounts counts = repository.countsFor(senderKey, now, priors.decay());
-            cache.put(senderKey, new CachedReputation(counts, now));
+            refreshSnapshot(senderKey, now);
         }
         log.info("rebuilt reputation cache from events for {} senders", senders.size());
         return senders.size();
@@ -169,6 +168,18 @@ public class ReputationService {
         if (cached.isPresent()) {
             return cached.get().decayedTo(now, priors.decay());
         }
+        return refreshSnapshot(senderKey, now);
+    }
+
+    /**
+     * Recomputes the sender's counts from the event log as of {@code now} and refreshes
+     * its cached snapshot, returning the counts. This is the shared "replay one sender
+     * from the log" step behind both a cache miss ({@link #currentCounts}) and a full
+     * cache rebuild ({@link #rebuildCacheFromEvents}). Distinct from the write path in
+     * {@link #record}, which already holds the recomputed counts and defers the cache
+     * write to after the transaction commits.
+     */
+    private BucketedReputationCounts refreshSnapshot(String senderKey, Instant now) {
         BucketedReputationCounts counts = repository.countsFor(senderKey, now, priors.decay());
         cache.put(senderKey, new CachedReputation(counts, now));
         return counts;

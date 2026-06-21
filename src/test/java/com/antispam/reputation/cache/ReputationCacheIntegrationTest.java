@@ -66,8 +66,11 @@ class ReputationCacheIntegrationTest extends AbstractPostgresIntegrationTest {
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        // Set the URL (not host/port): the test profile supplies a placeholder
+        // spring.data.redis.url, and a URL takes precedence over host/port — so this
+        // must override that same key to actually point at the container.
+        registry.add("spring.data.redis.url",
+                () -> "redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379));
     }
 
     @TestConfiguration

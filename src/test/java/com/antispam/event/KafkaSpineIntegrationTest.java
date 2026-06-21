@@ -14,6 +14,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.AfterEach;
@@ -69,7 +70,18 @@ class KafkaSpineIntegrationTest extends AbstractPostgresIntegrationTest {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         consumer = new DefaultKafkaConsumerFactory<>(
                 props, new StringDeserializer(), new ByteArrayDeserializer()).createConsumer();
-        consumer.subscribe(List.of("emails.raw"));
+        // Explicitly assign every partition and seek to the start rather than subscribe():
+        // assignment skips consumer-group join/rebalance entirely, which removes the only
+        // timing race in this verification consumer. That matters because the broker is
+        // shared with the feature and reputation-accrual consumer groups (each replaying
+        // the backlog at startup), and a rebalance under that load could outlast the poll
+        // window. With assign + seekToBeginning the consumer reads deterministically from
+        // offset 0 of each partition, so a published record is always found.
+        List<TopicPartition> partitions = consumer.partitionsFor("emails.raw").stream()
+                .map(info -> new TopicPartition(info.topic(), info.partition()))
+                .toList();
+        consumer.assign(partitions);
+        consumer.seekToBeginning(partitions);
     }
 
     @AfterEach
@@ -118,7 +130,18 @@ class KafkaSpineIntegrationTest extends AbstractPostgresIntegrationTest {
      */
     private ConsumerRecord<String, byte[]> awaitRecordFor(IngestResult result) throws Exception {
         List<ConsumerRecord<String, byte[]>> seen = new ArrayList<>();
-        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        // Re-seek to offset 0 of every assigned partition before each search. poll()
+        // advances the position past the whole returned batch, not just the records we
+        // looked at — so when two same-key records (same partition) arrive in one batch, a
+        // search that returns on the first would leave the second already consumed past.
+        // Re-seeking makes each lookup an independent full scan, robust to batch boundaries
+        // and to records left over from a previous test on this shared container.
+        consumer.seekToBeginning(consumer.assignment());
+        // The consumer is pre-assigned (no group rebalance), so the record is on the topic
+        // and only the async after-commit publish stands between ingest and visibility. A
+        // generous deadline still absorbs broker load from the feature and reputation-
+        // accrual consumer groups sharing this container.
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (System.nanoTime() < deadline) {
             ConsumerRecords<String, byte[]> batch = consumer.poll(Duration.ofMillis(500));
             for (ConsumerRecord<String, byte[]> record : batch) {
