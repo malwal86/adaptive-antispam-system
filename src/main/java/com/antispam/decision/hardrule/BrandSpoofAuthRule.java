@@ -58,8 +58,7 @@ public class BrandSpoofAuthRule implements HardRule {
     }
 
     private static boolean isBrandDomain(String domain, Brand brand) {
-        String brandDomain = brand.domain().toLowerCase(Locale.ROOT);
-        return domain.equals(brandDomain) || domain.endsWith("." + brandDomain);
+        return Hosts.isHostOrSubdomainOf(domain, brand.domain().toLowerCase(Locale.ROOT));
     }
 
     /** DMARC is considered aligned only on an explicit {@code dmarc=pass} result. */

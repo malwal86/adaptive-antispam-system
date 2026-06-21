@@ -1,11 +1,8 @@
 package com.antispam.ingest;
 
-import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
-import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.util.Date;
-import java.util.Properties;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,10 +17,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class EmailParser {
 
-    private static final Session SESSION = Session.getInstance(new Properties());
-
     public ParsedEmail parse(byte[] raw) {
-        MimeMessage message = toMimeMessage(raw);
+        MimeMessage message = MimeMessages.parse(raw);
         if (message == null) {
             return new ParsedEmail(null, null, null, null, null, null);
         }
@@ -31,19 +26,10 @@ public class EmailParser {
         return new ParsedEmail(
                 sender,
                 domainOf(sender),
-                header(message, "To"),
+                MimeMessages.header(message, "To"),
                 subject(message),
                 sentInstant(message),
-                header(message, "Authentication-Results"));
-    }
-
-    private static MimeMessage toMimeMessage(byte[] raw) {
-        try {
-            return new MimeMessage(SESSION, new ByteArrayInputStream(raw));
-        } catch (Exception e) {
-            // Unparseable as a MIME message at all — metadata is simply unknown.
-            return null;
-        }
+                MimeMessages.header(message, "Authentication-Results"));
     }
 
     private static String firstFromAddress(MimeMessage message) {
@@ -86,15 +72,6 @@ public class EmailParser {
         try {
             Date date = message.getSentDate();
             return date == null ? null : date.toInstant();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /** Returns the named header(s) joined, or null if absent. */
-    private static String header(MimeMessage message, String name) {
-        try {
-            return blankToNull(message.getHeader(name, ", "));
         } catch (Exception e) {
             return null;
         }
