@@ -130,10 +130,17 @@ class KafkaSpineIntegrationTest extends AbstractPostgresIntegrationTest {
      */
     private ConsumerRecord<String, byte[]> awaitRecordFor(IngestResult result) throws Exception {
         List<ConsumerRecord<String, byte[]>> seen = new ArrayList<>();
-        // The consumer is pre-assigned and sought to the beginning (see subscribe()), so the
-        // record is on the topic and only the async after-commit publish stands between
-        // ingest and visibility. A generous deadline still absorbs broker load from the
-        // feature and reputation-accrual consumer groups sharing this container.
+        // Re-seek to offset 0 of every assigned partition before each search. poll()
+        // advances the position past the whole returned batch, not just the records we
+        // looked at — so when two same-key records (same partition) arrive in one batch, a
+        // search that returns on the first would leave the second already consumed past.
+        // Re-seeking makes each lookup an independent full scan, robust to batch boundaries
+        // and to records left over from a previous test on this shared container.
+        consumer.seekToBeginning(consumer.assignment());
+        // The consumer is pre-assigned (no group rebalance), so the record is on the topic
+        // and only the async after-commit publish stands between ingest and visibility. A
+        // generous deadline still absorbs broker load from the feature and reputation-
+        // accrual consumer groups sharing this container.
         long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (System.nanoTime() < deadline) {
             ConsumerRecords<String, byte[]> batch = consumer.poll(Duration.ofMillis(500));
