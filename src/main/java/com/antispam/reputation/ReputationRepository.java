@@ -1,5 +1,8 @@
 package com.antispam.reputation;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.OptionalDouble;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -26,16 +29,26 @@ public class ReputationRepository {
             values (?, ?, ?, ?, ?)
             """;
 
-    // Weighted good/bad totals in one pass. FILTER sums each bucket; COALESCE turns
-    // "no rows" into 0 rather than NULL, so an unseen sender reads as (0, 0) -- the
-    // pure prior -- with no special-casing above. decay_factor is 1.0 today; story
-    // 03.02 will fold it into the weighted sum here when read-time decay lands.
+    // Decayed good/bad totals in one pass at the read instant (story 03.02). Each
+    // event's weight is scaled by 0.5 ^ (age / halfLife) -- the same exponential factor
+    // as ExponentialDecay, mirrored here in SQL so the aggregation stays a single scan
+    // rather than loading every event into the JVM. age = readAt - occurred_at in
+    // seconds (extract(epoch ...)); GREATEST(0, ...) clamps a negative age (an event
+    // newer than the read instant under clock skew) to full weight, never amplifying,
+    // matching ExponentialDecay. FILTER sums each bucket; COALESCE turns "no rows" into
+    // 0 rather than NULL, so an unseen sender reads as (0, 0) -- the pure prior -- with
+    // no special-casing above. The first ? is readAt, the second the half-life seconds.
     private static final String COUNTS_SQL = """
             select
-                coalesce(sum(weight) filter (where signal = 'GOOD'), 0) as good,
-                coalesce(sum(weight) filter (where signal = 'BAD'), 0)  as bad
-            from reputation_events
-            where sender_key = ?
+                coalesce(sum(decayed_weight) filter (where signal = 'GOOD'), 0) as good,
+                coalesce(sum(decayed_weight) filter (where signal = 'BAD'), 0)  as bad
+            from (
+                select signal,
+                       weight * power(0.5, greatest(0, extract(epoch from (? - occurred_at))) / ?)
+                           as decayed_weight
+                from reputation_events
+                where sender_key = ?
+            ) decayed_events
             """;
 
     private static final String SAVE_SCORE_SQL = """
@@ -67,12 +80,21 @@ public class ReputationRepository {
     }
 
     /**
-     * Sums the sender's good/bad weight from the log — the recompute-from-truth that
-     * makes the score auditable. Returns {@code (0, 0)} for a sender with no events.
+     * Sums the sender's good/bad weight from the log as of {@code readAt}, with each
+     * event decayed by {@code decay} according to its age — the recompute-from-truth
+     * that makes the score auditable and lets trust fade lazily at read time (story
+     * 03.02). Returns {@code (0, 0)} for a sender with no events.
+     *
+     * @param senderKey the sender to total
+     * @param readAt    the instant the score is read as of; each event's age is
+     *                  measured back from here
+     * @param decay     the read-time decay model (its half-life drives the fade)
      */
-    public ReputationCounts countsFor(String senderKey) {
+    public ReputationCounts countsFor(String senderKey, Instant readAt, ExponentialDecay decay) {
         return jdbc.queryForObject(COUNTS_SQL,
                 (rs, rowNum) -> new ReputationCounts(rs.getDouble("good"), rs.getDouble("bad")),
+                OffsetDateTime.ofInstant(readAt, ZoneOffset.UTC),
+                decay.halfLifeSeconds(),
                 senderKey);
     }
 

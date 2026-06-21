@@ -97,14 +97,18 @@ antispam:
   console:
     allowed-origins:
       - http://localhost:3000
-  # Beta-reputation prior (story 03.01). reputation = (good+alpha)/(good+bad+alpha+beta);
-  # alpha/beta are pseudo-counts of prior good/bad observations. 1/1 is a uniform
-  # prior, so a brand-new sender starts at mean 0.5 with maximum variance — the wide
-  # uncertainty that routes unseen senders to the LLM (Epic 05). Tunable here (not in
-  # code) and validated positive (a proper Beta needs alpha, beta > 0).
+  # Beta-reputation parameters (stories 03.01, 03.02). reputation =
+  # (good+alpha)/(good+bad+alpha+beta); alpha/beta are pseudo-counts of prior good/bad
+  # observations. 1/1 is a uniform prior, so a brand-new sender starts at mean 0.5 with
+  # maximum variance — the wide uncertainty that routes unseen senders to the LLM
+  # (Epic 05). half-life is the exponential read-time decay half-life (PRD §Subsystem 3):
+  # evidence older than one half-life counts for under half, so dormant trust fades and
+  # a warm-then-attack sender isn't fully shielded by old goodwill. Tunable here (not in
+  # code) and validated (a proper Beta needs alpha, beta > 0; half-life must be positive).
   reputation:
     alpha: 1.0
     beta: 1.0
+    half-life: 7d
   seed:
     enabled: false
     corpus-dir: seed-corpus

@@ -15,8 +15,11 @@ import java.time.Instant;
  * @param signal      whether this counts as a good or bad observation
  * @param weight      how much it counts toward its bucket; {@code > 0}. 1.0 today,
  *                    fractional once soft auth-gating lands (story 03.03)
- * @param decayFactor time-decay applied to this event; in {@code (0, 1]}. Always 1.0
- *                    today; story 03.02 fills it with the read-time decay
+ * @param decayFactor a per-event decay multiplier in {@code (0, 1]}; always 1.0.
+ *                    Read-time decay (story 03.02) is computed from {@code occurredAt}
+ *                    against the read instant, not from a stored factor, so this column
+ *                    stays 1.0 — reserved for a future write-time fold optimization of
+ *                    the senders/Redis cache (stories 03.04/03.05)
  * @param source      provenance of the signal (e.g. {@code decision}, {@code feedback},
  *                    {@code api}); non-blank
  * @param occurredAt  when the signal happened; {@code null} before persistence

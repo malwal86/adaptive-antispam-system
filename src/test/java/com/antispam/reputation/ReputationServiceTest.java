@@ -2,10 +2,15 @@ package com.antispam.reputation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,18 +19,22 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * The orchestration contract above the SQL (story 03.01): recording a signal
- * <em>appends</em> an event and then recomputes the score <em>from the events</em>
- * and refreshes the cache; reading recomputes from the events too. The repository
- * is mocked so this pins the wiring — append, recompute, cache — in isolation; the
- * real SQL and the events-are-truth guarantee are exercised against Postgres in
- * {@link ReputationAccrualIntegrationTest}.
+ * The orchestration contract above the SQL (stories 03.01, 03.02): recording a signal
+ * <em>appends</em> an event and then recomputes the score <em>from the events</em> and
+ * refreshes the cache; reading recomputes from the events too. Both paths total the log
+ * as of the injected {@link Clock} instant, applying the configured decay — the
+ * repository is mocked so this pins that wiring (append, recompute-with-decay, cache)
+ * in isolation; the real SQL decay and the events-are-truth guarantee are exercised
+ * against Postgres in {@link ReputationAccrualIntegrationTest} and
+ * {@link ReputationDecayIntegrationTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class ReputationServiceTest {
 
     private static final String SENDER = "alice@example.com";
-    private static final ReputationProperties PRIORS = new ReputationProperties(1.0, 1.0);
+    private static final Instant NOW = Instant.parse("2026-06-21T12:00:00Z");
+    private static final Duration HALF_LIFE = Duration.ofDays(7);
+    private static final ReputationProperties PRIORS = new ReputationProperties(1.0, 1.0, HALF_LIFE);
 
     @Mock
     private ReputationRepository repository;
@@ -34,12 +43,12 @@ class ReputationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ReputationService(repository, PRIORS);
+        service = new ReputationService(repository, PRIORS, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
     void recording_appends_a_full_weight_event_carrying_signal_and_source() {
-        when(repository.countsFor(SENDER)).thenReturn(new ReputationCounts(1, 0));
+        when(repository.countsFor(eq(SENDER), any(), any())).thenReturn(new ReputationCounts(1, 0));
 
         service.record(SENDER, ReputationSignal.GOOD, 1.0, "decision");
 
@@ -56,7 +65,7 @@ class ReputationServiceTest {
     @Test
     void recording_recomputes_from_events_and_caches_the_mean() {
         // After this signal the log holds 8 good / 2 bad: mean (8+1)/(8+2+1+1)=0.75.
-        when(repository.countsFor(SENDER)).thenReturn(new ReputationCounts(8, 2));
+        when(repository.countsFor(eq(SENDER), any(), any())).thenReturn(new ReputationCounts(8, 2));
 
         BetaReputation result = service.record(SENDER, ReputationSignal.GOOD, 1.0, "decision");
 
@@ -69,12 +78,27 @@ class ReputationServiceTest {
     void reading_an_unseen_sender_returns_the_high_variance_prior() {
         // No events recorded: counts are zero, so the read is the pure prior -- a
         // wide Beta, not a falsely-confident neutral.
-        when(repository.countsFor(SENDER)).thenReturn(new ReputationCounts(0, 0));
+        when(repository.countsFor(eq(SENDER), any(), any())).thenReturn(new ReputationCounts(0, 0));
 
         BetaReputation reputation = service.currentReputation(SENDER);
 
         assertThat(reputation.mean()).isEqualTo(0.5);
         assertThat(reputation.variance()).isCloseTo(1.0 / 12.0, within(1e-12));
         assertThat(reputation.count()).isZero();
+    }
+
+    @Test
+    void reading_totals_the_log_as_of_the_clock_with_the_configured_decay() {
+        // Decay is read-time: the score is summed as of the clock instant using the
+        // configured half-life, so a later read decays older evidence without any write.
+        when(repository.countsFor(eq(SENDER), any(), any())).thenReturn(new ReputationCounts(4, 1));
+
+        service.currentReputation(SENDER);
+
+        ArgumentCaptor<Instant> readAt = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<ExponentialDecay> decay = ArgumentCaptor.forClass(ExponentialDecay.class);
+        verify(repository).countsFor(eq(SENDER), readAt.capture(), decay.capture());
+        assertThat(readAt.getValue()).isEqualTo(NOW);
+        assertThat(decay.getValue().halfLife()).isEqualTo(HALF_LIFE);
     }
 }
