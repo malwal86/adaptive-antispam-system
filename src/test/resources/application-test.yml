@@ -31,6 +31,18 @@ app:
   # test re-enables it and points at a Testcontainers broker.
   kafka:
     enabled: false
+    # Single consumer thread per group in tests. The single-broker Testcontainers
+    # cluster on a constrained CI runner is easily overloaded: with the production
+    # defaults (feature 3 + reputation 6 = 9 threads) all joining and replaying the
+    # backlog at once, the after-commit producer can be starved of broker metadata
+    # past its max.block.ms and silently drop a publish — which surfaced as a flaky
+    # KafkaSpineIntegrationTest timeout. Tests don't need consumer parallelism (per-
+    # partition ordering holds at any concurrency), so cap both groups at 1 to keep
+    # the broker calm. Production keeps its application.yml defaults.
+    feature-consumer:
+      concurrency: 1
+    reputation-consumer:
+      concurrency: 1
 
 # Hard-rule fixtures pinned for the integration tests, so they don't ride on the
 # editable demo defaults in the main application.yml.
