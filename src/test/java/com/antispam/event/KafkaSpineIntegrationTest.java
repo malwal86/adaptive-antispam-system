@@ -118,7 +118,11 @@ class KafkaSpineIntegrationTest extends AbstractPostgresIntegrationTest {
      */
     private ConsumerRecord<String, byte[]> awaitRecordFor(IngestResult result) throws Exception {
         List<ConsumerRecord<String, byte[]>> seen = new ArrayList<>();
-        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        // Generous deadline: this verification consumer joins the group and waits out a
+        // rebalance, and the broker is shared with the feature and reputation-accrual
+        // consumer groups (each replaying the backlog at startup). Under that coordination
+        // load the join can lag, so allow ample headroom to keep the assertion from racing.
+        long deadline = System.nanoTime() + Duration.ofSeconds(40).toNanos();
         while (System.nanoTime() < deadline) {
             ConsumerRecords<String, byte[]> batch = consumer.poll(Duration.ofMillis(500));
             for (ConsumerRecord<String, byte[]> record : batch) {
