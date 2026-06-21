@@ -18,12 +18,17 @@ import org.springframework.stereotype.Component;
  * off — the default in tests and any environment without a broker — the listener
  * bean is not created, so no consumer connects.
  *
+ * <p><b>Idempotency.</b> Delivery is at-least-once, so the same email can arrive
+ * more than once (retry, rebalance, replay). {@link EmailFeaturesService} claims
+ * each email in the processed-message ledger before extracting, so a redelivery is a
+ * no-op and never double-counts (story 02.03).
+ *
  * <p><b>Partition safety.</b> Extraction is total (a malformed email degrades to
- * sentinels, never throws) and the store is an idempotent upsert, so normal
- * processing cannot poison a partition. As a backstop, any unexpected error while
- * handling one record is caught and logged so the offset still advances and a
- * single bad record cannot wedge the shard. The email is durable in Postgres, so
- * a dropped record is recoverable by replay (Epic 09).
+ * sentinels, never throws), so normal processing cannot poison a partition. As a
+ * backstop, any unexpected error while handling one record is caught and logged so
+ * the offset still advances and a single bad record cannot wedge the shard. The
+ * email is durable in Postgres, so a dropped record is recoverable by replay
+ * (Epic 09).
  */
 @Component
 @ConditionalOnProperty(prefix = "app.kafka", name = "enabled", havingValue = "true", matchIfMissing = true)

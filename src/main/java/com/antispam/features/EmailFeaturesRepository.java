@@ -18,9 +18,10 @@ import org.springframework.stereotype.Repository;
  *
  * <p>{@link #save} is an upsert on that key: re-extracting an email at the same
  * version refreshes the payload in place (extraction is deterministic, so the
- * payload is identical anyway) and never creates a duplicate, which keeps the
- * consumer safe to re-run during replay or after a redelivery (story 02.03 builds
- * full idempotent processing on top of this).
+ * payload is identical anyway) and never creates a duplicate. This is defense in
+ * depth — the consumer is kept from re-running at all by the processed-message
+ * ledger (story 02.03, {@code com.antispam.idempotency.ProcessedMessageLedger}) —
+ * but it keeps the row convergent even if a write reaches the table by another path.
  */
 @Repository
 public class EmailFeaturesRepository {
