@@ -32,9 +32,9 @@ import java.util.UUID;
 import java.util.concurrent.locks.Lock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * The accrual seam in isolation (story 03.05): given an email id and the partition
