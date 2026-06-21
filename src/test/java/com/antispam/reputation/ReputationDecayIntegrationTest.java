@@ -108,9 +108,9 @@ class ReputationDecayIntegrationTest extends AbstractPostgresIntegrationTest {
         Duration age = Duration.ofDays(10);
         appendAged(sender, ReputationSignal.GOOD, 1, age);
 
-        ReputationCounts counts = repository.countsFor(sender, READ_AT, DECAY);
+        BucketedReputationCounts counts = repository.countsFor(sender, READ_AT, DECAY);
 
-        assertThat(counts.good()).isCloseTo(DECAY.survivingFraction(age), within(1e-9));
+        assertThat(counts.authenticated().good()).isCloseTo(DECAY.survivingFraction(age), within(1e-9));
     }
 
     @Test
@@ -121,8 +121,9 @@ class ReputationDecayIntegrationTest extends AbstractPostgresIntegrationTest {
         String sender = uniqueSender();
         appendAged(sender, ReputationSignal.GOOD, 1, Duration.ZERO); // occurred at READ_AT
 
-        double atRead = repository.countsFor(sender, READ_AT, DECAY).good();
-        double aHalfLifeLater = repository.countsFor(sender, READ_AT.plus(HALF_LIFE), DECAY).good();
+        double atRead = repository.countsFor(sender, READ_AT, DECAY).authenticated().good();
+        double aHalfLifeLater =
+                repository.countsFor(sender, READ_AT.plus(HALF_LIFE), DECAY).authenticated().good();
 
         assertThat(atRead).isCloseTo(1.0, within(1e-9));
         assertThat(aHalfLifeLater).isCloseTo(0.5, within(1e-9));
@@ -143,8 +144,8 @@ class ReputationDecayIntegrationTest extends AbstractPostgresIntegrationTest {
         OffsetDateTime occurredAt = OffsetDateTime.ofInstant(READ_AT.minus(age), ZoneOffset.UTC);
         for (int i = 0; i < n; i++) {
             jdbc.update("""
-                    insert into reputation_events (sender_key, signal, weight, decay_factor, source, occurred_at)
-                    values (?, ?, 1.0, 1.0, 'decay-test', ?)
+                    insert into reputation_events (sender_key, signal, weight, decay_factor, source, bucket, occurred_at)
+                    values (?, ?, 1.0, 1.0, 'decay-test', 'AUTHENTICATED', ?)
                     """, sender, signal.name(), occurredAt);
         }
     }
