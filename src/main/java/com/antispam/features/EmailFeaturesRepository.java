@@ -1,0 +1,96 @@
+package com.antispam.features;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.OffsetDateTime;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Access to the versioned {@code email_features} table. A row is keyed by
+ * {@code (email_id, feature_version)}; the {@link FeatureSet} payload is stored as
+ * JSONB so the feature set can grow without a schema migration.
+ *
+ * <p>{@link #save} is an upsert on that key: re-extracting an email at the same
+ * version refreshes the payload in place (extraction is deterministic, so the
+ * payload is identical anyway) and never creates a duplicate, which keeps the
+ * consumer safe to re-run during replay or after a redelivery (story 02.03 builds
+ * full idempotent processing on top of this).
+ */
+@Repository
+public class EmailFeaturesRepository {
+
+    private static final String UPSERT_SQL = """
+            insert into email_features (email_id, feature_version, features)
+            values (?, ?, ?::jsonb)
+            on conflict (email_id, feature_version)
+            do update set features = excluded.features, extracted_at = now()
+            """;
+
+    private static final String SELECT_SQL = """
+            select email_id, feature_version, features, extracted_at
+            from email_features
+            where email_id = ? and feature_version = ?
+            """;
+
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    @Autowired
+    public EmailFeaturesRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    /** Inserts or refreshes the features row for {@code (emailId, featureVersion)}. */
+    public void save(EmailFeatures features) {
+        jdbc.update(UPSERT_SQL,
+                features.emailId(),
+                features.featureVersion(),
+                toJson(features.features()));
+    }
+
+    /** Returns the features for an email at a specific version, if present. */
+    public Optional<EmailFeatures> find(UUID emailId, int featureVersion) {
+        try {
+            return Optional.ofNullable(
+                    jdbc.queryForObject(SELECT_SQL, mapper, emailId, featureVersion));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+
+    private String toJson(FeatureSet features) {
+        try {
+            return objectMapper.writeValueAsString(features);
+        } catch (JsonProcessingException e) {
+            // The feature set is a closed set of records and primitives; a failure
+            // here is a programming error (a non-serializable field crept in), not a
+            // runtime condition to recover from.
+            throw new IllegalStateException("failed to serialize feature set", e);
+        }
+    }
+
+    private final RowMapper<EmailFeatures> mapper = (rs, rowNum) -> {
+        FeatureSet features = fromJson(rs.getString("features"));
+        OffsetDateTime extractedAt = rs.getObject("extracted_at", OffsetDateTime.class);
+        return new EmailFeatures(
+                rs.getObject("email_id", UUID.class),
+                rs.getInt("feature_version"),
+                features,
+                extractedAt == null ? null : extractedAt.toInstant());
+    };
+
+    private FeatureSet fromJson(String json) {
+        try {
+            return objectMapper.readValue(json, FeatureSet.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("failed to deserialize feature set", e);
+        }
+    }
+}
