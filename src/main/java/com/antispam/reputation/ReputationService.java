@@ -10,16 +10,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The reputation entry point: turns a reputation-affecting signal into an appended
- * event and a refreshed Beta score, and answers "what is this sender's reputation
- * now?" (story 03.01).
+ * event and a refreshed score, and answers "what is this sender's reputation now?"
+ * (stories 03.01–03.03).
  *
- * <p><b>Events are the source of truth.</b> Both {@link #record} and
- * {@link #currentReputation} derive the score by summing the append-only log via
- * {@link ReputationRepository#countsFor} and applying the configured prior — never
- * by reading the cache. So the read always reflects the truth, the
- * {@code senders.current_reputation_score} cache that {@code record} writes is only
- * ever a convenience, and "recompute from events == current score" holds by
- * construction (AC 4 / AC 5). The Redis read cache arrives in story 03.04.
+ * <p><b>Events are the source of truth.</b> Both {@link #record} and the reads derive
+ * the score by summing the append-only log via {@link ReputationRepository#countsFor}
+ * and applying the configured prior — never by reading the cache. So the read always
+ * reflects the truth, the {@code senders.current_reputation_score} cache that
+ * {@code record} writes is only ever a convenience, and "recompute from events ==
+ * current score" holds by construction (AC 4 / AC 5). The Redis read cache arrives in
+ * story 03.04.
  *
  * <p><b>Decay is lazy and read-time</b> (story 03.02). Every summation passes the
  * current {@link Clock} instant and the configured {@link ExponentialDecay} to
@@ -27,6 +27,14 @@ import org.springframework.transaction.annotation.Transactional;
  * sender's accrued trust decays simply by time passing, with no decay cron, and the
  * same instant-and-model is used whether the caller is reading or has just recorded.
  * The clock is injected so tests can drive a synthetic timeline.
+ *
+ * <p><b>Accrual is soft auth-gated</b> (story 03.03). Each signal carries the
+ * {@link ReputationBucket} its mail's DMARC alignment puts it in, and the read returns
+ * a {@link GatedReputation} holding both the full authenticated view and the
+ * neutral-capped unauthenticated view. A caller scoring a specific email picks the view
+ * matching that email's auth status via {@link #reputationFor}, so an unauthenticated
+ * (spoofed) message can never inherit a warmed-up domain's trust. The cached score is
+ * the authenticated (earned) mean.
  *
  * <p><b>Atomicity.</b> {@code record} appends the event and refreshes the cache in
  * one transaction, so the cache never reflects an event that rolled back. Concurrent
@@ -52,39 +60,66 @@ public class ReputationService {
     }
 
     /**
-     * Records one signal for a sender and returns the sender's reputation after it.
+     * Records one signal for a sender, into the bucket its mail's authentication earns,
+     * and returns the sender's gated reputation after it.
      *
      * @param senderKey the sender identity (com.antispam.event.SenderKey)
      * @param signal    good or bad
-     * @param weight    how much the signal counts ({@code > 0}; 1.0 until auth-gating)
+     * @param weight    how much the signal counts ({@code > 0}; 1.0 by default)
      * @param source    provenance of the signal (e.g. {@code decision}, {@code api})
-     * @return the recomputed Beta reputation including the just-recorded signal
+     * @param bucket    which accrual bucket — {@link AuthGate} maps the email's auth
+     *                  result to {@link ReputationBucket#AUTHENTICATED} or
+     *                  {@link ReputationBucket#UNAUTHENTICATED}
+     * @return the recomputed gated reputation including the just-recorded signal
      */
     @Transactional
-    public BetaReputation record(String senderKey, ReputationSignal signal, double weight, String source) {
+    public GatedReputation record(
+            String senderKey, ReputationSignal signal, double weight, String source, ReputationBucket bucket) {
         // Append, then recompute as of now: prior events are decayed to this instant
         // and the just-appended event (age ~0) folds in at full weight, so the write
         // path's decay matches the read path's by construction (AC 3).
-        repository.append(ReputationEvent.of(senderKey, signal, weight, source));
-        BetaReputation reputation = computeFromEvents(senderKey, clock.instant());
-        repository.saveScore(senderKey, reputation.mean());
-        log.info("recorded reputation signal sender={} signal={} weight={} source={} -> mean={} n={}",
-                senderKey, signal, weight, source, reputation.mean(), reputation.count());
+        repository.append(ReputationEvent.of(senderKey, signal, weight, source, bucket));
+        GatedReputation reputation = computeFromEvents(senderKey, clock.instant());
+        BetaReputation earned = reputation.authenticated();
+        repository.saveScore(senderKey, earned.mean());
+        log.info("recorded reputation signal sender={} signal={} weight={} source={} bucket={} -> authMean={} authN={}",
+                senderKey, signal, weight, source, bucket, earned.mean(), earned.count());
         return reputation;
     }
 
     /**
-     * The sender's current reputation, recomputed from the event log with evidence
-     * decayed to the present instant. An unseen sender returns the prior — a wide,
-     * uncertain Beta — rather than a 404 or a falsely-confident neutral.
+     * The sender's gated reputation — both the authenticated and neutral-capped
+     * unauthenticated views — recomputed from the event log with evidence decayed to the
+     * present instant. An unseen sender returns the prior in both views (a wide,
+     * uncertain Beta), never a 404 or a falsely-confident neutral.
      */
     @Transactional(readOnly = true)
-    public BetaReputation currentReputation(String senderKey) {
+    public GatedReputation gatedReputation(String senderKey) {
         return computeFromEvents(senderKey, clock.instant());
     }
 
-    private BetaReputation computeFromEvents(String senderKey, Instant readAt) {
-        ReputationCounts counts = repository.countsFor(senderKey, readAt, priors.decay());
-        return new BetaReputation(counts.good(), counts.bad(), priors.alpha(), priors.beta());
+    /**
+     * The reputation an email with the given DMARC alignment is entitled to: the full
+     * authenticated view when aligned, otherwise the neutral-capped unauthenticated view.
+     * This is the read the live decision path uses so a spoofed message is scored on the
+     * capped bucket alone, not the domain's earned trust.
+     */
+    @Transactional(readOnly = true)
+    public BetaReputation reputationFor(String senderKey, boolean dmarcAligned) {
+        return gatedReputation(senderKey).forAuthStatus(dmarcAligned);
+    }
+
+    /**
+     * The sender's earned (authenticated-bucket) reputation — the answer to "what trust
+     * has this sender legitimately built?", isolated from unauthenticated traffic.
+     */
+    @Transactional(readOnly = true)
+    public BetaReputation currentReputation(String senderKey) {
+        return gatedReputation(senderKey).authenticated();
+    }
+
+    private GatedReputation computeFromEvents(String senderKey, Instant readAt) {
+        BucketedReputationCounts counts = repository.countsFor(senderKey, readAt, priors.decay());
+        return GatedReputation.from(counts, priors);
     }
 }

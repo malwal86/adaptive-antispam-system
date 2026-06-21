@@ -22,6 +22,8 @@ import java.time.Instant;
  *                    the senders/Redis cache (stories 03.04/03.05)
  * @param source      provenance of the signal (e.g. {@code decision}, {@code feedback},
  *                    {@code api}); non-blank
+ * @param bucket      which accrual bucket the signal lands in, decided by the email's
+ *                    DMARC alignment (story 03.03); part of the audit trail; non-null
  * @param occurredAt  when the signal happened; {@code null} before persistence
  *                    stamps it (the database defaults it), non-null when read back
  */
@@ -32,6 +34,7 @@ public record ReputationEvent(
         double weight,
         double decayFactor,
         String source,
+        ReputationBucket bucket,
         Instant occurredAt) {
 
     public ReputationEvent {
@@ -50,14 +53,18 @@ public record ReputationEvent(
         if (source == null || source.isBlank()) {
             throw new IllegalArgumentException("source must not be blank");
         }
+        if (bucket == null) {
+            throw new IllegalArgumentException("bucket must not be null");
+        }
     }
 
     /**
-     * A new, not-yet-persisted event at full decay (1.0) — the shape every caller
-     * appends today. {@code id} and {@code occurredAt} are left for the database to
-     * assign.
+     * A new, not-yet-persisted event at full decay (1.0) for the given accrual bucket —
+     * the shape every caller appends today. {@code id} and {@code occurredAt} are left
+     * for the database to assign.
      */
-    public static ReputationEvent of(String senderKey, ReputationSignal signal, double weight, String source) {
-        return new ReputationEvent(null, senderKey, signal, weight, 1.0, source, null);
+    public static ReputationEvent of(
+            String senderKey, ReputationSignal signal, double weight, String source, ReputationBucket bucket) {
+        return new ReputationEvent(null, senderKey, signal, weight, 1.0, source, bucket, null);
     }
 }

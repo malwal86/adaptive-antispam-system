@@ -29,6 +29,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * time decay (story 03.02) is identically 1.0 and these accrual assertions stay exact.
  * Decay's own behaviour is covered by {@link ReputationDecayIntegrationTest}.
  *
+ * <p>These accrual signals all land in the {@link ReputationBucket#AUTHENTICATED}
+ * bucket, so {@code currentReputation} (the earned, authenticated view) reflects them
+ * directly; the soft auth-gate's bucket split and neutral cap are covered by
+ * {@link ReputationAuthGatingIntegrationTest}.
+ *
  * <p>Each test uses a unique sender key so the shared container/context can run them
  * in any order without cross-talk.
  */
@@ -67,10 +72,10 @@ class ReputationAccrualIntegrationTest extends AbstractPostgresIntegrationTest {
     void a_good_bad_sequence_updates_the_mean_and_variance_per_the_formula() {
         String sender = uniqueSender();
         for (int i = 0; i < 8; i++) {
-            service.record(sender, ReputationSignal.GOOD, 1.0, "api");
+            service.record(sender, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
         }
         for (int i = 0; i < 2; i++) {
-            service.record(sender, ReputationSignal.BAD, 1.0, "api");
+            service.record(sender, ReputationSignal.BAD, 1.0, "api", ReputationBucket.AUTHENTICATED);
         }
 
         BetaReputation reputation = service.currentReputation(sender);
@@ -84,14 +89,14 @@ class ReputationAccrualIntegrationTest extends AbstractPostgresIntegrationTest {
     void variance_shrinks_as_more_evidence_arrives() {
         String sender = uniqueSender();
 
-        double afterOne = service.record(sender, ReputationSignal.GOOD, 1.0, "api").variance();
+        double afterOne = service.record(sender, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED).authenticated().variance();
         double afterFive = afterOne;
         for (int i = 0; i < 4; i++) {
-            afterFive = service.record(sender, ReputationSignal.GOOD, 1.0, "api").variance();
+            afterFive = service.record(sender, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED).authenticated().variance();
         }
         double afterTwenty = afterFive;
         for (int i = 0; i < 15; i++) {
-            afterTwenty = service.record(sender, ReputationSignal.GOOD, 1.0, "api").variance();
+            afterTwenty = service.record(sender, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED).authenticated().variance();
         }
 
         assertThat(afterFive).isLessThan(afterOne);
@@ -101,9 +106,9 @@ class ReputationAccrualIntegrationTest extends AbstractPostgresIntegrationTest {
     @Test
     void the_cached_score_equals_the_recompute_from_events() {
         String sender = uniqueSender();
-        service.record(sender, ReputationSignal.GOOD, 1.0, "api");
-        service.record(sender, ReputationSignal.BAD, 1.0, "api");
-        service.record(sender, ReputationSignal.GOOD, 1.0, "api");
+        service.record(sender, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
+        service.record(sender, ReputationSignal.BAD, 1.0, "api", ReputationBucket.AUTHENTICATED);
+        service.record(sender, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
 
         double recomputed = service.currentReputation(sender).mean();
         double cached = repository.findCachedScore(sender).orElseThrow();
@@ -117,8 +122,8 @@ class ReputationAccrualIntegrationTest extends AbstractPostgresIntegrationTest {
     void every_signal_is_an_append_never_an_in_place_mutation() {
         String sender = uniqueSender();
 
-        service.record(sender, ReputationSignal.GOOD, 1.0, "api");
-        service.record(sender, ReputationSignal.BAD, 1.0, "api");
+        service.record(sender, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
+        service.record(sender, ReputationSignal.BAD, 1.0, "api", ReputationBucket.AUTHENTICATED);
 
         assertThat(eventRowCount(sender)).isEqualTo(2);
         // The log is append-only at the database: rewriting or deleting history is
@@ -134,14 +139,14 @@ class ReputationAccrualIntegrationTest extends AbstractPostgresIntegrationTest {
     @Test
     void counts_are_order_independent() {
         String forward = uniqueSender();
-        service.record(forward, ReputationSignal.GOOD, 1.0, "api");
-        service.record(forward, ReputationSignal.GOOD, 1.0, "api");
-        service.record(forward, ReputationSignal.BAD, 1.0, "api");
+        service.record(forward, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
+        service.record(forward, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
+        service.record(forward, ReputationSignal.BAD, 1.0, "api", ReputationBucket.AUTHENTICATED);
 
         String reversed = uniqueSender();
-        service.record(reversed, ReputationSignal.BAD, 1.0, "api");
-        service.record(reversed, ReputationSignal.GOOD, 1.0, "api");
-        service.record(reversed, ReputationSignal.GOOD, 1.0, "api");
+        service.record(reversed, ReputationSignal.BAD, 1.0, "api", ReputationBucket.AUTHENTICATED);
+        service.record(reversed, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
+        service.record(reversed, ReputationSignal.GOOD, 1.0, "api", ReputationBucket.AUTHENTICATED);
 
         // Same multiset of signals, different arrival order: identical Beta (the
         // weighted sum is commutative pre-decay).

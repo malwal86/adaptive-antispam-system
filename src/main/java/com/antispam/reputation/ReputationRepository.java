@@ -25,25 +25,30 @@ import org.springframework.stereotype.Repository;
 public class ReputationRepository {
 
     private static final String APPEND_SQL = """
-            insert into reputation_events (sender_key, signal, weight, decay_factor, source)
-            values (?, ?, ?, ?, ?)
+            insert into reputation_events (sender_key, signal, weight, decay_factor, source, bucket)
+            values (?, ?, ?, ?, ?, ?)
             """;
 
-    // Decayed good/bad totals in one pass at the read instant (story 03.02). Each
-    // event's weight is scaled by 0.5 ^ (age / halfLife) -- the same exponential factor
-    // as ExponentialDecay, mirrored here in SQL so the aggregation stays a single scan
-    // rather than loading every event into the JVM. age = readAt - occurred_at in
-    // seconds (extract(epoch ...)); GREATEST(0, ...) clamps a negative age (an event
-    // newer than the read instant under clock skew) to full weight, never amplifying,
-    // matching ExponentialDecay. FILTER sums each bucket; COALESCE turns "no rows" into
-    // 0 rather than NULL, so an unseen sender reads as (0, 0) -- the pure prior -- with
-    // no special-casing above. The first ? is readAt, the second the half-life seconds.
+    // Decayed good/bad totals, split by accrual bucket, in one pass at the read instant
+    // (stories 03.02, 03.03). Each event's weight is scaled by 0.5 ^ (age / halfLife) --
+    // the same exponential factor as ExponentialDecay, mirrored here in SQL so the
+    // aggregation stays a single scan rather than loading every event into the JVM.
+    // age = readAt - occurred_at in seconds (extract(epoch ...)); GREATEST(0, ...) clamps
+    // a negative age (an event newer than the read instant under clock skew) to full
+    // weight, never amplifying, matching ExponentialDecay. FILTER sums each bucket x
+    // signal cell; COALESCE turns "no rows" into 0 rather than NULL, so an unseen sender
+    // reads as all-zero -- the pure prior -- with no special-casing above. The neutral
+    // cap on the unauthenticated bucket is applied later, in GatedReputation. The first
+    // ? is readAt, the second the half-life seconds.
     private static final String COUNTS_SQL = """
             select
-                coalesce(sum(decayed_weight) filter (where signal = 'GOOD'), 0) as good,
-                coalesce(sum(decayed_weight) filter (where signal = 'BAD'), 0)  as bad
+                coalesce(sum(decayed_weight) filter (where bucket = 'AUTHENTICATED'   and signal = 'GOOD'), 0) as auth_good,
+                coalesce(sum(decayed_weight) filter (where bucket = 'AUTHENTICATED'   and signal = 'BAD'),  0) as auth_bad,
+                coalesce(sum(decayed_weight) filter (where bucket = 'UNAUTHENTICATED' and signal = 'GOOD'), 0) as unauth_good,
+                coalesce(sum(decayed_weight) filter (where bucket = 'UNAUTHENTICATED' and signal = 'BAD'),  0) as unauth_bad
             from (
                 select signal,
+                       bucket,
                        weight * power(0.5, greatest(0, extract(epoch from (? - occurred_at))) / ?)
                            as decayed_weight
                 from reputation_events
@@ -76,23 +81,28 @@ public class ReputationRepository {
                 event.signal().name(),
                 event.weight(),
                 event.decayFactor(),
-                event.source());
+                event.source(),
+                event.bucket().name());
     }
 
     /**
-     * Sums the sender's good/bad weight from the log as of {@code readAt}, with each
-     * event decayed by {@code decay} according to its age — the recompute-from-truth
-     * that makes the score auditable and lets trust fade lazily at read time (story
-     * 03.02). Returns {@code (0, 0)} for a sender with no events.
+     * Sums the sender's good/bad weight from the log as of {@code readAt}, split by
+     * accrual bucket, with each event decayed by {@code decay} according to its age — the
+     * recompute-from-truth that makes the score auditable, lets trust fade lazily at read
+     * time (story 03.02), and keeps the authenticated and unauthenticated histories apart
+     * for soft auth-gating (story 03.03). Returns all-zero counts for a sender with no
+     * events. The neutral cap is applied above, in {@link GatedReputation}.
      *
      * @param senderKey the sender to total
      * @param readAt    the instant the score is read as of; each event's age is
      *                  measured back from here
      * @param decay     the read-time decay model (its half-life drives the fade)
      */
-    public ReputationCounts countsFor(String senderKey, Instant readAt, ExponentialDecay decay) {
+    public BucketedReputationCounts countsFor(String senderKey, Instant readAt, ExponentialDecay decay) {
         return jdbc.queryForObject(COUNTS_SQL,
-                (rs, rowNum) -> new ReputationCounts(rs.getDouble("good"), rs.getDouble("bad")),
+                (rs, rowNum) -> new BucketedReputationCounts(
+                        new ReputationCounts(rs.getDouble("auth_good"), rs.getDouble("auth_bad")),
+                        new ReputationCounts(rs.getDouble("unauth_good"), rs.getDouble("unauth_bad"))),
                 OffsetDateTime.ofInstant(readAt, ZoneOffset.UTC),
                 decay.halfLifeSeconds(),
                 senderKey);
