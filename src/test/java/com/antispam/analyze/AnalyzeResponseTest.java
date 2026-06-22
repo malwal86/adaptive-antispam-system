@@ -26,7 +26,7 @@ class AnalyzeResponseTest {
         Instant decidedAt = Instant.parse("2026-06-05T12:00:00Z");
         Classification classification = new Classification(
                 classificationId, emailId, Decision.BLOCK,
-                List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 3L, null, decidedAt);
+                List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 3L, null, null, decidedAt);
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, false);
 
@@ -51,7 +51,7 @@ class AnalyzeResponseTest {
         Classification classification = new Classification(
                 UUID.randomUUID(), UUID.randomUUID(), Decision.ALLOW,
                 List.of(), RouteUsed.MODEL, 0L,
-                new ModelScores(0.12, 0.03, "bootstrap-v1"), Instant.now());
+                new ModelScores(0.12, 0.03, "bootstrap-v1"), null, Instant.now());
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, true);
 
@@ -66,5 +66,8 @@ class AnalyzeResponseTest {
         assertThat(response.modelVersion()).isEqualTo("bootstrap-v1");
         // With no calibration fit, the served confidence is the raw P(abuse) = spam + phish.
         assertThat(response.calibratedConfidence()).isCloseTo(0.15, org.assertj.core.data.Offset.offset(1e-9));
+        // No calibration installed ⇒ the score was not fused, so there is no posterior.
+        assertThat(response.posterior()).isNull();
+        assertThat(response.uncertaintyBand()).isNull();
     }
 }

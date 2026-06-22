@@ -29,6 +29,7 @@ exported corpus + arena features; the serving code does not change.
 ## Outputs (checked in)
 
 - `../src/main/resources/models/spam-classifier-bootstrap-v1.onnx` — classifier, served by Java.
+- `../src/main/resources/models/spam-classifier-bootstrap-v1.metadata.json` — π_train (training base rate) for log-odds fusion (story 04.04), read by `ModelMetadata.java`.
 - `../src/main/resources/models/embed-bootstrap-v1.onnx` — embedder, served by Java.
 - `../src/test/resources/models/parity-cases.json` — classifier Java↔Python fixture.
 - `../src/test/resources/models/embedding-parity-cases.json` — embedder Java↔Python fixture.

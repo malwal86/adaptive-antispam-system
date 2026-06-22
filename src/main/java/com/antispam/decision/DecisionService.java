@@ -15,14 +15,23 @@ import org.springframework.stereotype.Service;
  * <p>The short-circuit is structural, not incidental: {@code orElseGet} evaluates
  * the {@link ContentClassifier} lazily, so a hard-rule hit reaches a decision
  * without the model ever being invoked — the explicit "skip the model" guarantee
- * from PRD §Subsystem 1. Later stages (calibration, fusion, burst override, LLM
- * routing) extend this pipeline in their epics.
+ * from PRD §Subsystem 1. Later stages (burst override, LLM routing) extend this
+ * pipeline in their epics.
  *
- * <p><b>Deciding vs. persisting are separable.</b> {@link #evaluate} runs the
+ * <p><b>Fusion is a persist-time stage</b> (story 04.04). {@link #evaluate} stops at the
+ * model's calibrated score, because the read-only consumers that call it (reputation
+ * accrual off the spine, story 03.05) only need the verdict, not a reputation-fused
+ * posterior — and fusing there would make accrual read reputation to score reputation.
+ * {@link #decide} runs the extra step: for a model-route decision it fuses the calibrated
+ * score with the sender's reputation prior ({@link FusionService}) and records the
+ * posterior on the row. Fusion is skipped (and no posterior stored) when it is not
+ * applicable — a hard-rule row, or a model row scored before any calibration is installed.
+ *
+ * <p><b>Deciding vs. persisting are separable.</b> {@link #evaluate} runs the core
  * pipeline and returns the in-memory {@link DecisionOutcome} without writing a row;
- * {@link #decide} is {@code evaluate} plus persistence. The split lets a read-only
- * consumer derive a verdict for an email — e.g. reputation accrual off the event
- * spine (story 03.05) — without minting a second {@link Classification} for it.
+ * {@link #decide} is {@code evaluate} plus fusion plus persistence. The split lets a
+ * read-only consumer derive a verdict for an email without minting a second
+ * {@link Classification} for it.
  */
 @Service
 public class DecisionService {
@@ -32,15 +41,18 @@ public class DecisionService {
     private final HardRuleEngine hardRuleEngine;
     private final ContentClassifier contentClassifier;
     private final ClassificationRepository repository;
+    private final FusionService fusionService;
 
     @Autowired
     public DecisionService(
             HardRuleEngine hardRuleEngine,
             ContentClassifier contentClassifier,
-            ClassificationRepository repository) {
+            ClassificationRepository repository,
+            FusionService fusionService) {
         this.hardRuleEngine = hardRuleEngine;
         this.contentClassifier = contentClassifier;
         this.repository = repository;
+        this.fusionService = fusionService;
     }
 
     /**
@@ -57,17 +69,33 @@ public class DecisionService {
     }
 
     /**
-     * Decides {@code email} and records the decision.
+     * Decides {@code email}, fuses the model score with sender reputation where
+     * applicable, and records the decision.
      *
      * @return the persisted {@link Classification}
      */
     public Classification decide(Email email) {
         DecisionOutcome outcome = evaluate(email);
-        Classification classification = repository.save(email.id(), outcome);
-        // No PII here: only the email id, route, verdict, and reason codes.
-        log.info("decided email={} route={} decision={} reasons={} latencyMs={}",
+        FusedScore fused = fuseIfApplicable(email, outcome);
+        Classification classification = repository.save(email.id(), outcome, fused);
+        // No PII here: only the email id, route, verdict, reason codes, and the posterior.
+        log.info("decided email={} route={} decision={} reasons={} latencyMs={} posterior={}",
                 email.id(), outcome.route(), outcome.decision(),
-                outcome.reasonCodes(), outcome.latencyMs());
+                outcome.reasonCodes(), outcome.latencyMs(),
+                fused == null ? null : fused.posterior());
         return classification;
+    }
+
+    /**
+     * Fuses the model's calibrated score with sender reputation for a model-route
+     * decision, or {@code null} when fusion does not apply: a hard-rule decision carries
+     * no model score, and a model decision is fused only if a calibration is installed
+     * (fusion requires a calibrated probability — story 04.04 AC 3).
+     */
+    private FusedScore fuseIfApplicable(Email email, DecisionOutcome outcome) {
+        if (outcome.scores() == null) {
+            return null;
+        }
+        return fusionService.fuse(email, outcome.scores()).orElse(null);
     }
 }
