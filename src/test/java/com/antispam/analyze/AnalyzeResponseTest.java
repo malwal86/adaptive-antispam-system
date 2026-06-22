@@ -26,7 +26,8 @@ class AnalyzeResponseTest {
         Instant decidedAt = Instant.parse("2026-06-05T12:00:00Z");
         Classification classification = new Classification(
                 classificationId, emailId, Decision.BLOCK,
-                List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 3L, null, null, decidedAt);
+                List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 3L, null, null,
+                "bootstrap-v1", decidedAt);
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, false);
 
@@ -44,6 +45,9 @@ class AnalyzeResponseTest {
         assertThat(response.phishingScore()).isNull();
         assertThat(response.modelVersion()).isNull();
         assertThat(response.calibratedConfidence()).isNull();
+        // A block is withheld, not delivered; the decision records its policy.
+        assertThat(response.delivered()).isFalse();
+        assertThat(response.policyVersion()).isEqualTo("bootstrap-v1");
     }
 
     @Test
@@ -51,14 +55,14 @@ class AnalyzeResponseTest {
         Classification classification = new Classification(
                 UUID.randomUUID(), UUID.randomUUID(), Decision.ALLOW,
                 List.of(), RouteUsed.MODEL, 0L,
-                new ModelScores(0.12, 0.03, "bootstrap-v1"), null, Instant.now());
+                new ModelScores(0.12, 0.03, "bootstrap-v1"), null, "bootstrap-v1", Instant.now());
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, true);
 
         assertThat(response.tier()).isEqualTo("allow");
         assertThat(response.routeUsed()).isEqualTo("model");
         assertThat(response.reasonCodes()).isEmpty();
-        assertThat(response.explanation()).contains("provisionally allowed");
+        assertThat(response.explanation()).contains("the active policy");
         assertThat(response.duplicate()).isTrue();
         // The model route surfaces its raw scores for the card / API.
         assertThat(response.spamScore()).isEqualTo(0.12);
@@ -69,5 +73,8 @@ class AnalyzeResponseTest {
         // No calibration installed ⇒ the score was not fused, so there is no posterior.
         assertThat(response.posterior()).isNull();
         assertThat(response.uncertaintyBand()).isNull();
+        // An allow is delivered, and the decision records the policy it was made under.
+        assertThat(response.delivered()).isTrue();
+        assertThat(response.policyVersion()).isEqualTo("bootstrap-v1");
     }
 }

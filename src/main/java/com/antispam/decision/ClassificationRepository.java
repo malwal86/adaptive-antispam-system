@@ -22,15 +22,15 @@ public class ClassificationRepository {
             insert into classifications (
                 id, email_id, decision, reason_codes, route_used, latency_ms,
                 spam_score, phishing_score, model_version, calibrated_confidence,
-                posterior, uncertainty_band)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                posterior, uncertainty_band, policy_version)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             returning created_at
             """;
 
     private static final String SELECT_BY_EMAIL_SQL = """
             select id, email_id, decision, reason_codes, route_used, latency_ms,
                    spam_score, phishing_score, model_version, calibrated_confidence,
-                   posterior, uncertainty_band, created_at
+                   posterior, uncertainty_band, policy_version, created_at
             from classifications
             where email_id = ?
             order by created_at
@@ -51,8 +51,10 @@ public class ClassificationRepository {
      * @param fused the fused posterior, or {@code null} when the decision was not fused
      *              (a hard-rule short-circuit, or a model row scored before any calibration
      *              was installed — story 04.04)
+     * @param policyVersion the active policy the decision was made under (story 04.05);
+     *              {@code null} only for callers that decide without a policy
      */
-    public Classification save(UUID emailId, DecisionOutcome outcome, FusedScore fused) {
+    public Classification save(UUID emailId, DecisionOutcome outcome, FusedScore fused, String policyVersion) {
         UUID id = UUID.randomUUID();
         String[] codeNames = outcome.reasonCodes().stream().map(Enum::name).toArray(String[]::new);
         ModelScores scores = outcome.scores();
@@ -86,6 +88,11 @@ public class ClassificationRepository {
                 ps.setDouble(11, fused.posterior());
                 ps.setDouble(12, fused.uncertaintyBand());
             }
+            if (policyVersion == null) {
+                ps.setNull(13, java.sql.Types.VARCHAR);
+            } else {
+                ps.setString(13, policyVersion);
+            }
             return ps;
         }, rs -> {
             rs.next();
@@ -94,7 +101,7 @@ public class ClassificationRepository {
 
         return new Classification(
                 id, emailId, outcome.decision(), outcome.reasonCodes(),
-                outcome.route(), outcome.latencyMs(), scores, fused, createdAt.toInstant());
+                outcome.route(), outcome.latencyMs(), scores, fused, policyVersion, createdAt.toInstant());
     }
 
     public List<Classification> findByEmailId(UUID emailId) {
@@ -112,6 +119,7 @@ public class ClassificationRepository {
                 rs.getLong("latency_ms"),
                 modelScores(rs),
                 fusedScore(rs),
+                rs.getString("policy_version"),
                 createdAt == null ? null : createdAt.toInstant());
     };
 

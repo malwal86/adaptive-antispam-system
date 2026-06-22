@@ -15,5 +15,12 @@ public enum ReasonCode {
     KNOWN_BAD_URL,
 
     /** Mail claims a high-value brand but its authentication (DMARC) is not aligned. */
-    MALFORMED_AUTH_BRAND_SPOOF
+    MALFORMED_AUTH_BRAND_SPOOF,
+
+    /**
+     * The mail is part of a detected burst/campaign, so its tier was escalated beyond
+     * what the posterior alone would select (story 04.05 hook; the detector lands in
+     * Epic 06). Records that the override, not the score, drove the verdict.
+     */
+    BURST_OVERRIDE
 }

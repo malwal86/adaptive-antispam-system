@@ -48,14 +48,23 @@ class AnalysisExplainerTest {
     }
 
     @Test
-    void plain_allow_reads_as_provisional_pending_the_tier_policy() {
+    void plain_allow_reads_as_a_policy_allow() {
         String explanation = AnalysisExplainer.explain(Decision.ALLOW, List.of());
 
-        // The model scores the email but the tier policy (04.04/04.05) isn't live,
-        // so a no-reason allow must read as provisional, not a confident verdict.
+        // A no-reason allow is the model scoring it benign and the active policy allowing
+        // it (story 04.05) — grounded, and not a confident severe verdict.
         assertThat(explanation)
-                .contains("the model scored it")
-                .contains("provisionally allowed")
+                .contains("the model scored it as benign")
+                .contains("the active policy")
                 .doesNotContain("Blocked");
+    }
+
+    @Test
+    void burst_override_reads_as_a_burst_escalation() {
+        String explanation = AnalysisExplainer.explain(Decision.QUARANTINE, List.of(ReasonCode.BURST_OVERRIDE));
+
+        assertThat(explanation)
+                .contains("Quarantined")
+                .contains("detected sending burst");
     }
 }

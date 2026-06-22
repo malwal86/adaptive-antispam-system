@@ -30,9 +30,8 @@ public final class AnalysisExplainer {
     public static String explain(Decision decision, List<ReasonCode> codes) {
         if (codes.isEmpty()) {
             return decision == Decision.ALLOW
-                    ? "No hard rule fired; the model scored it and it was provisionally allowed "
-                            + "(the calibrated tier policy that turns scores into a verdict arrives "
-                            + "in Epics 04.04–04.05)."
+                    ? "No hard rule fired; the model scored it as benign and the active policy "
+                            + "allowed it."
                     : verdict(decision) + ", but no specific reason was recorded.";
         }
         String reasons = codes.stream().map(AnalysisExplainer::phrase).collect(Collectors.joining("; "));
@@ -53,6 +52,8 @@ public final class AnalysisExplainer {
             case KNOWN_BAD_URL -> "a link resolves to a known-malicious host";
             case MALFORMED_AUTH_BRAND_SPOOF ->
                     "the message impersonates a high-value brand but fails authentication (DMARC)";
+            case BURST_OVERRIDE ->
+                    "it is part of a detected sending burst, which escalated the verdict";
         };
     }
 }

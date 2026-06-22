@@ -1,6 +1,7 @@
 package com.antispam.decision;
 
 import com.antispam.decision.hardrule.HardRuleEngine;
+import com.antispam.decision.policy.PolicyDecisionService;
 import com.antispam.ingest.Email;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,17 +43,20 @@ public class DecisionService {
     private final ContentClassifier contentClassifier;
     private final ClassificationRepository repository;
     private final FusionService fusionService;
+    private final PolicyDecisionService policyDecisionService;
 
     @Autowired
     public DecisionService(
             HardRuleEngine hardRuleEngine,
             ContentClassifier contentClassifier,
             ClassificationRepository repository,
-            FusionService fusionService) {
+            FusionService fusionService,
+            PolicyDecisionService policyDecisionService) {
         this.hardRuleEngine = hardRuleEngine;
         this.contentClassifier = contentClassifier;
         this.repository = repository;
         this.fusionService = fusionService;
+        this.policyDecisionService = policyDecisionService;
     }
 
     /**
@@ -69,20 +73,28 @@ public class DecisionService {
     }
 
     /**
-     * Decides {@code email}, fuses the model score with sender reputation where
-     * applicable, and records the decision.
+     * Decides {@code email} end-to-end: evaluate the route, fuse the model score with
+     * sender reputation where applicable, derive the final tier from the active policy
+     * (with the burst-override hook), and record the decision.
      *
      * @return the persisted {@link Classification}
      */
     public Classification decide(Email email) {
         DecisionOutcome outcome = evaluate(email);
         FusedScore fused = fuseIfApplicable(email, outcome);
-        Classification classification = repository.save(email.id(), outcome, fused);
-        // No PII here: only the email id, route, verdict, reason codes, and the posterior.
-        log.info("decided email={} route={} decision={} reasons={} latencyMs={} posterior={}",
-                email.id(), outcome.route(), outcome.decision(),
-                outcome.reasonCodes(), outcome.latencyMs(),
-                fused == null ? null : fused.posterior());
+        PolicyDecisionService.TieredDecision tiered = policyDecisionService.decide(email, outcome, fused);
+
+        // Re-stamp the route's verdict with the policy-derived tier and reasons, keeping the
+        // route, latency, and model scores the route established.
+        DecisionOutcome finalOutcome = new DecisionOutcome(
+                tiered.decision(), tiered.reasonCodes(), outcome.route(), outcome.latencyMs(), outcome.scores());
+        Classification classification =
+                repository.save(email.id(), finalOutcome, fused, tiered.policyVersion());
+        // No PII here: only the email id, route, verdict, reason codes, posterior, and policy.
+        log.info("decided email={} route={} decision={} reasons={} latencyMs={} posterior={} policy={}",
+                email.id(), finalOutcome.route(), finalOutcome.decision(),
+                finalOutcome.reasonCodes(), finalOutcome.latencyMs(),
+                fused == null ? null : fused.posterior(), tiered.policyVersion());
         return classification;
     }
 
