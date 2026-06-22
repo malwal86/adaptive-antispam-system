@@ -9,6 +9,23 @@ spring:
     url: ${app.postgres-url:}
     username: ${APP_POSTGRES_USER:}
     password: ${APP_POSTGRES_PASSWORD:}
+    # Supabase fronts Postgres with the Supavisor pooler. On the IPv4 SESSION-mode
+    # pooler (...pooler.supabase.com:5432) every client connection holds a server
+    # connection for its whole life, and the TOTAL clients across everything talking
+    # to the project is capped at the project's pool_size (15 by default) — exceed it
+    # and boot dies with FATAL (EMAXCONNSESSION). So bound this app's demand well under
+    # that ceiling: a tight maximum-pool-size leaves headroom for Flyway, a second
+    # instance during a deploy, and any local session, and stops a crash-loop from
+    # piling up leaked session slots. The TRANSACTION-mode pooler (:6543) lifts the cap
+    # and returns the server connection per-transaction (the durable fix — repoint
+    # APP_POSTGRES_URL there); prepareThreshold=0 turns off server-side prepared
+    # statements, which transaction mode can't keep across pooled connections (a no-op
+    # on session mode / a direct connection, so it is always safe to set).
+    hikari:
+      maximum-pool-size: ${APP_DB_POOL_MAX:5}
+      minimum-idle: 1
+      data-source-properties:
+        prepareThreshold: 0
 
   # Flyway owns the schema, including the emails-immutability trigger.
   flyway:
