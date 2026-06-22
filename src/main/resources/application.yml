@@ -190,6 +190,15 @@ antispam:
   seed:
     enabled: false
     corpus-dir: seed-corpus
+  # Bootstrap train/eval split over the labeled corpus (stories 11.01 / 11.03). The
+  # split is grouped by family (sender domain, as a campaign/lineage proxy) and
+  # time-forward (latest families held out), so calibration (04.02) and export (10.01)
+  # don't leak. eval-fraction is the share held out; seed only breaks ties among
+  # families of identical recency. Tunable here (not in code) and recorded so the same
+  # corpus + (eval-fraction, seed) reproduces the split exactly.
+  eval-split:
+    eval-fraction: 0.2
+    seed: 42
   hard-rules:
     url-denylist:
       - malware.example
