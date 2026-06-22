@@ -102,7 +102,9 @@ public class DecisionService {
         // the tier — the provisional posterior-derived tier stands. Story 05.06 resolves the verdict
         // into a tier (under 05.05's hard-rule circuit breaker) and moves the call onto the async
         // quarantine-pending path within its SLA.
-        LlmOutcome llm = tiered.route() == RouteUsed.LLM ? llmFallbackService.classify(email) : null;
+        LlmOutcome llm = tiered.route() == RouteUsed.LLM
+                ? llmFallbackService.classify(email, tiered.routingReasons())
+                : null;
         long latencyMs = outcome.latencyMs() + (llm == null ? 0L : llm.latencyMs());
         BigDecimal llmCostUsd = llm == null ? null : llm.costUsd();
 

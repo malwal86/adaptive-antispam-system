@@ -1,7 +1,9 @@
 package com.antispam.decision.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -9,11 +11,18 @@ import static org.mockito.Mockito.when;
 
 import com.antispam.decision.TestEmails;
 import com.antispam.decision.llm.LlmVerdict.Verdict;
+import com.antispam.decision.routing.RoutingReason;
+import com.antispam.features.EmailFeatureExtractor;
 import com.antispam.ingest.Email;
+import com.antispam.reputation.BetaReputation;
+import com.antispam.reputation.ReputationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -30,6 +39,12 @@ class LlmFallbackServiceTest {
     @Mock
     private LlmChatPort port;
 
+    @Mock
+    private ReputationService reputation;
+
+    /** The escalation reasons the router would hand a real LLM call; grounded into the prompt. */
+    private static final List<RoutingReason> REASONS = List.of(RoutingReason.LOW_MODEL_CONFIDENCE);
+
     private final Email email = TestEmails.bodyContaining("Claim your prize now");
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
@@ -37,8 +52,17 @@ class LlmFallbackServiceTest {
     // 0.01 + 0.01 = 0.02 USD, which makes the cost assertions exact.
     private final LlmProperties properties = new LlmProperties(true, new LlmProperties.Cost(0.01, 0.02));
 
+    @BeforeEach
+    void stubReputation() {
+        // Grounded context reads the sender's reputation; lenient so the one test that never
+        // classifies does not trip strict-stubbing. A modest, slightly-good Beta is enough.
+        lenient().when(reputation.reputationFor(anyString(), anyBoolean()))
+                .thenReturn(new BetaReputation(2.0, 1.0, 1.0, 1.0));
+    }
+
     private LlmFallbackService service() {
-        return new LlmFallbackService(port, properties, new LlmMeter(registry));
+        return new LlmFallbackService(
+                port, properties, new LlmMeter(registry), new EmailFeatureExtractor(), reputation);
     }
 
     private static LlmRawResponse response(String json) {
@@ -61,7 +85,7 @@ class LlmFallbackServiceTest {
     void parses_a_valid_response_into_the_typed_verdict_on_the_first_try() {
         when(port.complete(anyString(), anyString())).thenReturn(response(validJson()));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         assertThat(outcome.degraded()).isFalse();
         assertThat(outcome.attempts()).isEqualTo(1);
@@ -76,7 +100,7 @@ class LlmFallbackServiceTest {
                 .thenReturn(response("not json at all"))
                 .thenReturn(response(validJson()));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         assertThat(outcome.degraded()).isFalse();
         assertThat(outcome.attempts()).isEqualTo(2);
@@ -91,7 +115,7 @@ class LlmFallbackServiceTest {
                 .thenReturn(response("garbage"))
                 .thenReturn(response("{\"verdict\": \"NONSENSE\"}"));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         assertThat(outcome.degraded()).isTrue();
         assertThat(outcome.attempts()).isEqualTo(2);
@@ -117,7 +141,7 @@ class LlmFallbackServiceTest {
                 .thenReturn(response(missingField))
                 .thenReturn(response(validJson()));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         assertThat(outcome.degraded()).isFalse();
         assertThat(outcome.attempts()).isEqualTo(2);
@@ -137,7 +161,7 @@ class LlmFallbackServiceTest {
                 """;
         when(port.complete(anyString(), anyString())).thenReturn(response(extraField));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         assertThat(outcome.degraded()).isTrue();
         assertThat(outcome.attempts()).isEqualTo(2);
@@ -156,7 +180,7 @@ class LlmFallbackServiceTest {
                 """;
         when(port.complete(anyString(), anyString())).thenReturn(response(mistyped));
 
-        assertThat(service().classify(email).degraded()).isTrue();
+        assertThat(service().classify(email, REASONS).degraded()).isTrue();
     }
 
     @Test
@@ -172,7 +196,7 @@ class LlmFallbackServiceTest {
                 """;
         when(port.complete(anyString(), anyString())).thenReturn(response(outOfRange));
 
-        assertThat(service().classify(email).degraded()).isTrue();
+        assertThat(service().classify(email, REASONS).degraded()).isTrue();
     }
 
     @Test
@@ -188,7 +212,7 @@ class LlmFallbackServiceTest {
                 """;
         when(port.complete(anyString(), anyString())).thenReturn(response(unknownCode));
 
-        assertThat(service().classify(email).degraded()).isTrue();
+        assertThat(service().classify(email, REASONS).degraded()).isTrue();
     }
 
     @Test
@@ -196,7 +220,7 @@ class LlmFallbackServiceTest {
         String fenced = "```json\n" + validJson() + "\n```";
         when(port.complete(anyString(), anyString())).thenReturn(response(fenced));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         assertThat(outcome.degraded()).isFalse();
         assertThat(outcome.attempts()).isEqualTo(1);
@@ -207,7 +231,7 @@ class LlmFallbackServiceTest {
         when(port.complete(anyString(), anyString()))
                 .thenThrow(new LlmUnavailableException("disabled"));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         assertThat(outcome.degraded()).isTrue();
         assertThat(outcome.attempts()).isEqualTo(1);
@@ -221,7 +245,7 @@ class LlmFallbackServiceTest {
     void records_the_call_cost_from_token_usage() {
         when(port.complete(anyString(), anyString())).thenReturn(response(validJson()));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         // 1000 input * 0.01/1k + 500 output * 0.02/1k = 0.01 + 0.01 = 0.02 USD.
         assertThat(outcome.costUsd()).isEqualByComparingTo("0.020000");
@@ -234,10 +258,52 @@ class LlmFallbackServiceTest {
                 .thenReturn(response("garbage"))
                 .thenReturn(response(validJson()));
 
-        LlmOutcome outcome = service().classify(email);
+        LlmOutcome outcome = service().classify(email, REASONS);
 
         // Both attempts are billed: 2 * 0.02 = 0.04 USD.
         assertThat(outcome.costUsd()).isEqualByComparingTo("0.040000");
+    }
+
+    @Test
+    void grounds_the_prompt_in_features_reputation_and_escalation_not_the_raw_email_as_instructions() {
+        Email prizeMail = TestEmails.bodyContaining("WIN a FREE prize!!! click http://1.2.3.4/x now");
+        when(port.complete(anyString(), anyString())).thenReturn(response(validJson()));
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
+
+        service().classify(prizeMail, List.of(RoutingReason.NEW_SENDER_UNCERTAINTY));
+
+        verify(port).complete(system.capture(), user.capture());
+        String userContent = user.getValue();
+        // The grounded block carries the extracted-feature signals, the reputation summary, and why
+        // escalated — the trusted context the service assembled around the call.
+        String grounding = userContent.substring(0, userContent.indexOf("=== BEGIN EMAIL"));
+        assertThat(grounding)
+                .contains("GROUNDED CONTEXT")
+                .contains("Why escalated to you: NEW_SENDER_UNCERTAINTY")
+                .contains("Sender reputation: trust_mean=")
+                .contains("Authentication: spf=");
+        // The raw email is present only inside the untrusted-data block — never as instructions in
+        // the grounded section the model reasons from.
+        assertThat(grounding).doesNotContain("WIN a FREE prize");
+        assertThat(userContent).contains("=== BEGIN EMAIL (untrusted data");
+    }
+
+    @Test
+    void offers_only_llm_selectable_reason_codes_in_the_system_prompt() {
+        when(port.complete(anyString(), anyString())).thenReturn(response(validJson()));
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
+
+        service().classify(email, REASONS);
+
+        verify(port).complete(system.capture(), anyString());
+        String systemPrompt = system.getValue();
+        // Content judgments the model can make are offered...
+        assertThat(systemPrompt).contains("PRIZE_OR_LOTTERY_BAIT").contains("SUSPICIOUS_LINK");
+        // ...but facts established by deterministic checks the model cannot verify are not.
+        assertThat(systemPrompt).doesNotContain("KNOWN_BAD_URL").doesNotContain("BURST_OVERRIDE");
+        // A small few-shot anchors the schema and grounded vocabulary (AC 1).
+        assertThat(systemPrompt).contains("Example response").contains("\"verdict\":\"SPAM\"");
     }
 
     @Test
