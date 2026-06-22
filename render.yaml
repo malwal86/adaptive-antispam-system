@@ -21,13 +21,34 @@ services:
         sync: false
       - key: APP_POSTGRES_PASSWORD
         sync: false
-      # --- Redis/Kafka are validated-present but not yet connected (their epics
-      #     haven't landed). Placeholders satisfy the fail-fast check and let the
-      #     app boot; swap for real coordinates when Epics 02/03 wire them up. ---
+      # --- Redis: validated-present; the reputation cache stays off unless
+      #     ANTISPAM_REPUTATION_CACHE_ENABLED=true, so a placeholder is harmless. ---
       - key: APP_REDIS_URL
         value: redis://placeholder:6379
+      # --- Kafka (Aiven): the event spine is live (Epics 02/03), so the consumers
+      #     dial out at startup and a placeholder no longer resolves. Point these at
+      #     the real managed broker. BOOTSTRAP_SERVERS is the host:port; the SASL
+      #     trio is how the broker authenticates us (set protocol/mechanism per the
+      #     provider, e.g. SASL_SSL + PLAIN for Confluent, SASL_SSL + SCRAM-SHA-256
+      #     for Aiven). JAAS_CONFIG carries the credentials, so it is a secret. ---
       - key: APP_KAFKA_BOOTSTRAP_SERVERS
-        value: placeholder:9092
+        sync: false # <broker>-<project>.aivencloud.com:<port>
+      - key: APP_KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: APP_KAFKA_SASL_MECHANISM
+        sync: false # PLAIN | SCRAM-SHA-256 | SCRAM-SHA-512
+      - key: APP_KAFKA_SASL_JAAS_CONFIG
+        sync: false # full JAAS line incl. username/password — secret
+      # Aiven's broker cert is signed by a private project CA, so the client must
+      # trust it. Pass the CA inline as PEM (no JKS file to mount).
+      - key: APP_KAFKA_SSL_TRUSTSTORE_TYPE
+        value: PEM
+      - key: APP_KAFKA_SSL_TRUSTSTORE_CERTIFICATES
+        sync: false # the Aiven Project CA, full PEM incl. BEGIN/END lines
+      # Match the broker count of your plan: a single-broker cluster can't replicate
+      # x3, so set this to 1 there. Unset => app default of 3 (multi-broker plan).
+      - key: APP_KAFKA_REPLICATION_FACTOR
+        sync: false # 1 for a single-broker plan; omit/3 for >=3 brokers
       # --- CORS allow-list = the console's Vercel origin(s). Comma-separated;
       #     patterns allowed, e.g. "https://*.vercel.app,https://<your-domain>". ---
       - key: ANTISPAM_CONSOLE_ALLOWED_ORIGINS

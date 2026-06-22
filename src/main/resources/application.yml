@@ -33,6 +33,28 @@ spring:
   # responsive (the email is already persisted; the publish is after-commit).
   kafka:
     bootstrap-servers: ${app.kafka-bootstrap-servers:}
+    # Broker auth + transport. Set at the top level so it propagates to the
+    # producer, the consumers, AND the AdminClient that creates topics. Defaults
+    # are PLAINTEXT with empty SASL/SSL: local dev, the test profile, and the
+    # Testcontainers spine all run against an unauthenticated broker, so an unset
+    # environment never engages SASL/SSL (Kafka ignores sasl.*/ssl.* under
+    # PLAINTEXT). The hosted deploy talks to a managed broker (Aiven) over
+    # SASL_SSL and opts in via the environment:
+    #   APP_KAFKA_SECURITY_PROTOCOL=SASL_SSL
+    #   APP_KAFKA_SASL_MECHANISM=SCRAM-SHA-256   # PLAIN for some providers
+    #   APP_KAFKA_SASL_JAAS_CONFIG=<the provider's full JAAS line, incl. creds>
+    # Aiven signs its broker cert with a per-project private CA, so the client
+    # must be told to trust it. Rather than mount a JKS file, pass the CA PEM
+    # inline (Kafka 2.7+ supports an in-memory PEM truststore):
+    #   APP_KAFKA_SSL_TRUSTSTORE_TYPE=PEM
+    #   APP_KAFKA_SSL_TRUSTSTORE_CERTIFICATES=<the Aiven Project CA, PEM>
+    security:
+      protocol: ${APP_KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+    properties:
+      sasl.mechanism: ${APP_KAFKA_SASL_MECHANISM:}
+      sasl.jaas.config: ${APP_KAFKA_SASL_JAAS_CONFIG:}
+      ssl.truststore.type: ${APP_KAFKA_SSL_TRUSTSTORE_TYPE:}
+      ssl.truststore.certificates: ${APP_KAFKA_SSL_TRUSTSTORE_CERTIFICATES:}
     producer:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -102,7 +124,11 @@ app:
     raw-topic:
       name: emails.raw
       partitions: 6
-      replication-factor: 3
+      # Replicas per partition. Defaults to 3 (a multi-broker managed cluster), but
+      # a single-broker plan/cluster can't replicate x3 and would reject topic
+      # creation — override APP_KAFKA_REPLICATION_FACTOR=1 there (local/test set 1
+      # via their own profiles).
+      replication-factor: ${APP_KAFKA_REPLICATION_FACTOR:3}
       retention: 7d
     # Per-sender reputation accrual consumer (story 03.05). A second, independent
     # consumer group on emails.raw, parallel to the feature extractor. Because the
