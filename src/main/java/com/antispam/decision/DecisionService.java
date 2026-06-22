@@ -1,8 +1,11 @@
 package com.antispam.decision;
 
 import com.antispam.decision.hardrule.HardRuleEngine;
+import com.antispam.decision.llm.LlmFallbackService;
+import com.antispam.decision.llm.LlmOutcome;
 import com.antispam.decision.policy.PolicyDecisionService;
 import com.antispam.ingest.Email;
+import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +36,12 @@ import org.springframework.stereotype.Service;
  * {@link #decide} is {@code evaluate} plus fusion plus persistence. The split lets a
  * read-only consumer derive a verdict for an email without minting a second
  * {@link Classification} for it.
+ *
+ * <p><b>LLM fallback is a persist-time stage too</b> (story 05.02). When the policy stage routes
+ * a decision to the LLM, {@link #decide} calls the
+ * {@link com.antispam.decision.llm.LlmFallbackService} for a validated verdict (or a degrade) and
+ * records its cost and latency on the row. The verdict does not yet change the tier — that
+ * resolution, and the async quarantine-pending SLA, are story 05.06.
  */
 @Service
 public class DecisionService {
@@ -44,6 +53,7 @@ public class DecisionService {
     private final ClassificationRepository repository;
     private final FusionService fusionService;
     private final PolicyDecisionService policyDecisionService;
+    private final LlmFallbackService llmFallbackService;
 
     @Autowired
     public DecisionService(
@@ -51,12 +61,14 @@ public class DecisionService {
             ContentClassifier contentClassifier,
             ClassificationRepository repository,
             FusionService fusionService,
-            PolicyDecisionService policyDecisionService) {
+            PolicyDecisionService policyDecisionService,
+            LlmFallbackService llmFallbackService) {
         this.hardRuleEngine = hardRuleEngine;
         this.contentClassifier = contentClassifier;
         this.repository = repository;
         this.fusionService = fusionService;
         this.policyDecisionService = policyDecisionService;
+        this.llmFallbackService = llmFallbackService;
     }
 
     /**
@@ -84,19 +96,32 @@ public class DecisionService {
         FusedScore fused = fuseIfApplicable(email, outcome);
         PolicyDecisionService.TieredDecision tiered = policyDecisionService.decide(email, outcome, fused);
 
+        // When the router escalated the decision (route == LLM, story 05.01), actually call the LLM
+        // (story 05.02): the call yields a validated verdict or fail-degrades, and either way its
+        // cost and latency are recorded on the row. This story does NOT yet let the verdict change
+        // the tier — the provisional posterior-derived tier stands. Story 05.06 resolves the verdict
+        // into a tier (under 05.05's hard-rule circuit breaker) and moves the call onto the async
+        // quarantine-pending path within its SLA.
+        LlmOutcome llm = tiered.route() == RouteUsed.LLM ? llmFallbackService.classify(email) : null;
+        long latencyMs = outcome.latencyMs() + (llm == null ? 0L : llm.latencyMs());
+        BigDecimal llmCostUsd = llm == null ? null : llm.costUsd();
+
         // Re-stamp the route's verdict with the policy-derived tier, reasons, and route — the route
         // is the tiering stage's, since LLM routing (story 05.01) may have promoted it past the
-        // route the classifier established. Latency and model scores stay as the route set them.
+        // route the classifier established. The latency now includes the LLM call when one was made.
         DecisionOutcome finalOutcome = new DecisionOutcome(
-                tiered.decision(), tiered.reasonCodes(), tiered.route(), outcome.latencyMs(), outcome.scores());
+                tiered.decision(), tiered.reasonCodes(), tiered.route(), latencyMs, outcome.scores());
         Classification classification =
-                repository.save(email.id(), finalOutcome, fused, tiered.policyVersion());
-        // No PII here: only the email id, route, verdict, reason codes, posterior, and policy.
+                repository.save(email.id(), finalOutcome, fused, tiered.policyVersion(), llmCostUsd);
+        // No PII here: only the email id, route, verdict, reason codes, posterior, policy, and the
+        // LLM's categorical verdict/cost (never its free-text explanation, which echoes content).
         log.info("decided email={} route={} decision={} reasons={} routingReasons={} latencyMs={} "
-                        + "posterior={} policy={}",
+                        + "posterior={} policy={} llmVerdict={} llmDegraded={} llmCostUsd={}",
                 email.id(), finalOutcome.route(), finalOutcome.decision(),
                 finalOutcome.reasonCodes(), tiered.routingReasons(), finalOutcome.latencyMs(),
-                fused == null ? null : fused.posterior(), tiered.policyVersion());
+                fused == null ? null : fused.posterior(), tiered.policyVersion(),
+                llm == null || llm.degraded() ? null : llm.verdict().verdict(),
+                llm == null ? null : llm.degraded(), llmCostUsd);
         return classification;
     }
 

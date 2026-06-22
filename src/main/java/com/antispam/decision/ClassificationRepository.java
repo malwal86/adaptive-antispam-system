@@ -1,5 +1,6 @@
 package com.antispam.decision;
 
+import java.math.BigDecimal;
 import java.sql.Array;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -22,15 +23,15 @@ public class ClassificationRepository {
             insert into classifications (
                 id, email_id, decision, reason_codes, route_used, latency_ms,
                 spam_score, phishing_score, model_version, calibrated_confidence,
-                posterior, uncertainty_band, policy_version)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                posterior, uncertainty_band, policy_version, llm_cost_usd)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             returning created_at
             """;
 
     private static final String SELECT_BY_EMAIL_SQL = """
             select id, email_id, decision, reason_codes, route_used, latency_ms,
                    spam_score, phishing_score, model_version, calibrated_confidence,
-                   posterior, uncertainty_band, policy_version, created_at
+                   posterior, uncertainty_band, policy_version, llm_cost_usd, created_at
             from classifications
             where email_id = ?
             order by created_at
@@ -53,8 +54,11 @@ public class ClassificationRepository {
      *              was installed — story 04.04)
      * @param policyVersion the active policy the decision was made under (story 04.05);
      *              {@code null} only for callers that decide without a policy
+     * @param llmCostUsd the USD cost of the LLM fallback when the decision was routed to it
+     *              (story 05.02), or {@code null} on any decision that did not call the LLM
      */
-    public Classification save(UUID emailId, DecisionOutcome outcome, FusedScore fused, String policyVersion) {
+    public Classification save(UUID emailId, DecisionOutcome outcome, FusedScore fused,
+            String policyVersion, BigDecimal llmCostUsd) {
         UUID id = UUID.randomUUID();
         String[] codeNames = outcome.reasonCodes().stream().map(Enum::name).toArray(String[]::new);
         ModelScores scores = outcome.scores();
@@ -93,6 +97,13 @@ public class ClassificationRepository {
             } else {
                 ps.setString(13, policyVersion);
             }
+            // Cost is present only when the decision was routed to the LLM (story 05.02); every
+            // other route stores NULL, distinguishing "no LLM call" from a real zero-cost call.
+            if (llmCostUsd == null) {
+                ps.setNull(14, java.sql.Types.NUMERIC);
+            } else {
+                ps.setBigDecimal(14, llmCostUsd);
+            }
             return ps;
         }, rs -> {
             rs.next();
@@ -101,7 +112,8 @@ public class ClassificationRepository {
 
         return new Classification(
                 id, emailId, outcome.decision(), outcome.reasonCodes(),
-                outcome.route(), outcome.latencyMs(), scores, fused, policyVersion, createdAt.toInstant());
+                outcome.route(), outcome.latencyMs(), scores, fused, policyVersion, llmCostUsd,
+                createdAt.toInstant());
     }
 
     public List<Classification> findByEmailId(UUID emailId) {
@@ -120,6 +132,7 @@ public class ClassificationRepository {
                 modelScores(rs),
                 fusedScore(rs),
                 rs.getString("policy_version"),
+                rs.getBigDecimal("llm_cost_usd"),
                 createdAt == null ? null : createdAt.toInstant());
     };
 
