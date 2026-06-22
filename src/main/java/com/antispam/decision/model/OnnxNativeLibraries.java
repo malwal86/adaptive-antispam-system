@@ -25,8 +25,14 @@ import org.slf4j.LoggerFactory;
  * temp directory, and point that property at it. This must run before
  * {@code OrtEnvironment} is first referenced, so {@link OnnxModel} invokes
  * {@link #ensureLoadable()} at the very top of its constructor.
+ *
+ * <p>Shared infrastructure: both the classifier ({@link OnnxModel}) and the local
+ * embedder ({@code OnnxEmbeddingModel}, story 04.03) load their native libraries
+ * through this one helper — "one runtime serves classifier + embeddings"
+ * (PRD §Architecture). It is idempotent, so whichever session is constructed first
+ * stages the libraries and the other is a no-op.
  */
-final class OnnxNativeLibraries {
+public final class OnnxNativeLibraries {
 
     private static final Logger log = LoggerFactory.getLogger(OnnxNativeLibraries.class);
 
@@ -51,7 +57,7 @@ final class OnnxNativeLibraries {
      *
      * @throws IllegalStateException if the platform is unsupported or extraction fails
      */
-    static synchronized void ensureLoadable() {
+    public static synchronized void ensureLoadable() {
         if (prepared || System.getProperty(NATIVE_PATH_PROPERTY) != null) {
             prepared = true;
             return;

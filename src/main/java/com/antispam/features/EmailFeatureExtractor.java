@@ -260,6 +260,17 @@ public class EmailFeatureExtractor {
     // ---- Body decoding ------------------------------------------------------
 
     /**
+     * The decoded, HTML-stripped, human-readable body of an email — the same
+     * {@code display} text the text-statistics features are computed from. Exposed
+     * so the embedder (story 04.03) embeds exactly the text the pipeline already
+     * decodes, rather than re-implementing MIME parsing. Total: a null/empty/
+     * unparseable message yields an empty string.
+     */
+    public static String displayText(byte[] rawContent) {
+        return body(rawContent).display();
+    }
+
+    /**
      * The decoded body in two views: {@code raw} keeps HTML markup so link
      * extraction can see {@code href} URLs; {@code display} strips markup for text
      * statistics. {@code replyTo} is the Reply-To header, or null.
