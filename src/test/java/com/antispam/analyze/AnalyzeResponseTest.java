@@ -43,6 +43,7 @@ class AnalyzeResponseTest {
         assertThat(response.spamScore()).isNull();
         assertThat(response.phishingScore()).isNull();
         assertThat(response.modelVersion()).isNull();
+        assertThat(response.calibratedConfidence()).isNull();
     }
 
     @Test
@@ -63,5 +64,7 @@ class AnalyzeResponseTest {
         assertThat(response.spamScore()).isEqualTo(0.12);
         assertThat(response.phishingScore()).isEqualTo(0.03);
         assertThat(response.modelVersion()).isEqualTo("bootstrap-v1");
+        // With no calibration fit, the served confidence is the raw P(abuse) = spam + phish.
+        assertThat(response.calibratedConfidence()).isCloseTo(0.15, org.assertj.core.data.Offset.offset(1e-9));
     }
 }

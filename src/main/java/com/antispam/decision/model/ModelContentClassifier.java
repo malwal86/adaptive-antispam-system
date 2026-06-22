@@ -5,6 +5,7 @@ import com.antispam.decision.Decision;
 import com.antispam.decision.DecisionOutcome;
 import com.antispam.decision.ModelScores;
 import com.antispam.decision.RouteUsed;
+import com.antispam.decision.calibration.ActiveCalibrator;
 import com.antispam.features.EmailFeatureExtractor;
 import com.antispam.features.EmailFeatures;
 import com.antispam.ingest.Email;
@@ -27,9 +28,16 @@ import org.springframework.stereotype.Component;
  * the current {@link EmailFeatureExtractor#FEATURE_VERSION} — guaranteeing the
  * vector matches the model's feature version without a read-after-write race.
  *
+ * <p><b>Calibration (story 04.02).</b> The raw model probability is not a trustworthy
+ * frequency, so this path passes its {@link ModelScores#rawMalicious() raw abuse score}
+ * through the {@link ActiveCalibrator} and records the result as the served
+ * {@link ModelScores#calibratedConfidence() calibrated confidence}. Until a calibration
+ * is fit the active calibrator is the identity, so the served confidence equals the raw
+ * score; once fit, it is the corrected probability the fusion stage (04.04) consumes.
+ *
  * <p><b>Scope.</b> This story delivers the <em>scores</em>, not a score-driven
  * verdict. Turning calibrated, reputation-fused scores into a tier is Epics
- * 04.02/04.04/04.05; until then the model path returns a provisional
+ * 04.04/04.05; until then the model path returns a provisional
  * {@link Decision#ALLOW} carrying the recorded {@link ModelScores}. The score, not
  * the tier, is the observable deliverable here.
  */
@@ -38,11 +46,14 @@ public class ModelContentClassifier implements ContentClassifier {
 
     private final EmailFeatureExtractor extractor;
     private final OnnxModel model;
+    private final ActiveCalibrator calibrator;
 
     @Autowired
-    public ModelContentClassifier(EmailFeatureExtractor extractor, OnnxModel model) {
+    public ModelContentClassifier(EmailFeatureExtractor extractor, OnnxModel model,
+            ActiveCalibrator calibrator) {
         this.extractor = extractor;
         this.model = model;
+        this.calibrator = calibrator;
     }
 
     @Override
@@ -50,7 +61,9 @@ public class ModelContentClassifier implements ContentClassifier {
         long startNanos = System.nanoTime();
         EmailFeatures features = extractor.extract(email);
         float[] vector = ModelFeatureVector.toVector(features.features());
-        ModelScores scores = model.score(vector);
+        ModelScores rawScores = model.score(vector);
+        ModelScores scores = rawScores.withCalibratedConfidence(
+                calibrator.calibrate(rawScores.rawMalicious()));
         long latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
 
         // Provisional verdict: the tier is owned by later stories (fusion 04.04,

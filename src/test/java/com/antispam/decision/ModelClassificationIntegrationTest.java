@@ -58,6 +58,9 @@ class ModelClassificationIntegrationTest extends AbstractPostgresIntegrationTest
         assertThat(decision.scores().modelVersion()).isEqualTo(OnnxModel.MODEL_VERSION);
         assertThat(decision.scores().spamScore()).isBetween(0.0, 1.0);
         assertThat(decision.scores().phishingScore()).isBetween(0.0, 1.0);
+        // The served confidence is calibrated (story 04.02); with no fit installed it is
+        // the raw P(abuse), but it is always carried as a probability on the model route.
+        assertThat(decision.scores().calibratedConfidence()).isBetween(0.0, 1.0);
 
         // The scores are durable: re-read from Postgres and confirm they round-trip.
         assertThat(classifications.findByEmailId(email.id()))
@@ -68,6 +71,8 @@ class ModelClassificationIntegrationTest extends AbstractPostgresIntegrationTest
                     assertThat(stored.scores().spamScore()).isEqualTo(decision.scores().spamScore());
                     assertThat(stored.scores().phishingScore()).isEqualTo(decision.scores().phishingScore());
                     assertThat(stored.scores().modelVersion()).isEqualTo(OnnxModel.MODEL_VERSION);
+                    assertThat(stored.scores().calibratedConfidence())
+                            .isEqualTo(decision.scores().calibratedConfidence());
                 });
     }
 
