@@ -34,4 +34,11 @@ COPY --from=build /app/build/libs/*.jar app.jar
 
 # Host injects PORT; the app reads it (see application.yml). 8080 is the local default.
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+
+# Memory budget for the Render starter instance (512MB / 0.5 CPU). ONNX Runtime
+# (story 04.01) allocates native memory and a thread pool *outside* the JVM heap, so
+# the JVM must leave room: cap the heap at half of RAM, and pin the process to a
+# single CPU so neither the JVM nor ORT sizes its thread pools to the host's many
+# cores. Without these the container OOMs on boot and the deploy never goes live.
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=50.0 -XX:ActiveProcessorCount=1"
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
