@@ -37,7 +37,7 @@ import java.util.UUID;
  * @param classificationId the persisted {@code classifications} row id
  * @param tier             verdict tier, lowercase: {@code allow|warn|quarantine|block}
  * @param reasonCodes      canonical reason-code names justifying it (may be empty)
- * @param routeUsed        deciding route, lowercase: {@code hard_rule|model}
+ * @param routeUsed        deciding route, lowercase: {@code hard_rule|model|llm}
  * @param latencyMs        milliseconds that route spent deciding
  * @param explanation      one grounded human-readable sentence
  * @param spamScore        raw model P(spam) in {@code [0,1]}, or {@code null} on a hard-rule verdict

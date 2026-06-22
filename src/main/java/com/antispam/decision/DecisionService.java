@@ -84,16 +84,18 @@ public class DecisionService {
         FusedScore fused = fuseIfApplicable(email, outcome);
         PolicyDecisionService.TieredDecision tiered = policyDecisionService.decide(email, outcome, fused);
 
-        // Re-stamp the route's verdict with the policy-derived tier and reasons, keeping the
-        // route, latency, and model scores the route established.
+        // Re-stamp the route's verdict with the policy-derived tier, reasons, and route — the route
+        // is the tiering stage's, since LLM routing (story 05.01) may have promoted it past the
+        // route the classifier established. Latency and model scores stay as the route set them.
         DecisionOutcome finalOutcome = new DecisionOutcome(
-                tiered.decision(), tiered.reasonCodes(), outcome.route(), outcome.latencyMs(), outcome.scores());
+                tiered.decision(), tiered.reasonCodes(), tiered.route(), outcome.latencyMs(), outcome.scores());
         Classification classification =
                 repository.save(email.id(), finalOutcome, fused, tiered.policyVersion());
         // No PII here: only the email id, route, verdict, reason codes, posterior, and policy.
-        log.info("decided email={} route={} decision={} reasons={} latencyMs={} posterior={} policy={}",
+        log.info("decided email={} route={} decision={} reasons={} routingReasons={} latencyMs={} "
+                        + "posterior={} policy={}",
                 email.id(), finalOutcome.route(), finalOutcome.decision(),
-                finalOutcome.reasonCodes(), finalOutcome.latencyMs(),
+                finalOutcome.reasonCodes(), tiered.routingReasons(), finalOutcome.latencyMs(),
                 fused == null ? null : fused.posterior(), tiered.policyVersion());
         return classification;
     }

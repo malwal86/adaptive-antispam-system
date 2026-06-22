@@ -23,8 +23,13 @@ import java.time.Instant;
  * @param warnThreshold      posterior at/above which a mail is at least {@code warn}
  * @param quarantineThreshold posterior at/above which a mail is at least {@code quarantine}
  * @param blockThreshold     posterior at/above which a mail is {@code block}
- * @param llmThreshold       routing threshold consumed by Epic 05 (carried here so the whole
- *                           regime is one versioned bundle); not used by {@link #tierFor}
+ * @param llmThreshold       the LLM-routing confidence floor consumed by Epic 05: a model whose
+ *                           calibrated confidence falls below it is escalated. Carried here so the
+ *                           whole regime is one versioned bundle; not used by {@link #tierFor}
+ * @param routingBandWidth   the LLM-routing boundary band half-width (story 05.01): a posterior
+ *                           within this distance of a tier cut-point is escalated, the band
+ *                           widened further at decide time by the sender's reputation uncertainty.
+ *                           Not used by {@link #tierFor}
  * @param modelVersion       the model artifact this regime is calibrated for
  * @param createdAt          when the policy was created
  */
@@ -35,6 +40,7 @@ public record Policy(
         double quarantineThreshold,
         double blockThreshold,
         double llmThreshold,
+        double routingBandWidth,
         String modelVersion,
         Instant createdAt) {
 
@@ -43,6 +49,7 @@ public record Policy(
         requireUnit("quarantineThreshold", quarantineThreshold);
         requireUnit("blockThreshold", blockThreshold);
         requireUnit("llmThreshold", llmThreshold);
+        requireUnit("routingBandWidth", routingBandWidth);
         if (!(warnThreshold <= quarantineThreshold && quarantineThreshold <= blockThreshold)) {
             throw new IllegalArgumentException(String.format(
                     "tier thresholds must be a non-decreasing ladder but were warn=%.4f "

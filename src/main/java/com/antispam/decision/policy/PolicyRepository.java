@@ -27,21 +27,21 @@ public class PolicyRepository {
     private static final String INSERT_SQL = """
             insert into policies (
                 version, active, warn_threshold, quarantine_threshold, block_threshold,
-                llm_threshold, model_version)
-            values (?, ?, ?, ?, ?, ?, ?)
+                llm_threshold, routing_band_width, model_version)
+            values (?, ?, ?, ?, ?, ?, ?, ?)
             returning created_at
             """;
 
     private static final String SELECT_ACTIVE_SQL = """
             select version, active, warn_threshold, quarantine_threshold, block_threshold,
-                   llm_threshold, model_version, created_at
+                   llm_threshold, routing_band_width, model_version, created_at
             from policies
             where active
             """;
 
     private static final String SELECT_BY_VERSION_SQL = """
             select version, active, warn_threshold, quarantine_threshold, block_threshold,
-                   llm_threshold, model_version, created_at
+                   llm_threshold, routing_band_width, model_version, created_at
             from policies
             where version = ?
             """;
@@ -75,10 +75,11 @@ public class PolicyRepository {
         OffsetDateTime createdAt = jdbc.queryForObject(INSERT_SQL, (rs, rowNum) ->
                         rs.getObject("created_at", OffsetDateTime.class),
                 policy.version(), policy.active(), policy.warnThreshold(), policy.quarantineThreshold(),
-                policy.blockThreshold(), policy.llmThreshold(), policy.modelVersion());
+                policy.blockThreshold(), policy.llmThreshold(), policy.routingBandWidth(),
+                policy.modelVersion());
         return new Policy(policy.version(), policy.active(), policy.warnThreshold(),
                 policy.quarantineThreshold(), policy.blockThreshold(), policy.llmThreshold(),
-                policy.modelVersion(), createdAt.toInstant());
+                policy.routingBandWidth(), policy.modelVersion(), createdAt.toInstant());
     }
 
     /**
@@ -106,6 +107,7 @@ public class PolicyRepository {
                 rs.getDouble("quarantine_threshold"),
                 rs.getDouble("block_threshold"),
                 rs.getDouble("llm_threshold"),
+                rs.getDouble("routing_band_width"),
                 rs.getString("model_version"),
                 createdAt == null ? null : createdAt.toInstant());
     };
