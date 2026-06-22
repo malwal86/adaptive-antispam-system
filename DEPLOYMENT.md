@@ -44,8 +44,20 @@ Accounts needed: [Supabase](https://supabase.com), [Render](https://render.com),
    APP_POSTGRES_USER=postgres
    APP_POSTGRES_PASSWORD=<the password you set>
    ```
-   > If you use the pooled connection (port `6543`), use that port instead. Flyway
-   > runs migrations on boot, so the user must own the `public` schema (the
+   > **Use the Transaction-mode pooler (port `6543`).** Render can't route IPv6,
+   > so the IPv4 pooler host (`aws-0-<region>.pooler.supabase.com`) is required and
+   > the user becomes `postgres.<project-ref>`. Prefer port `6543` (transaction
+   > mode) over `5432` (session mode): session mode caps the project's TOTAL client
+   > connections at `pool_size` (15 by default), so the runtime pool + Flyway + a
+   > deploy's overlapping instance exhaust it and boot dies with
+   > `FATAL (EMAXCONNSESSION)`. Transaction mode lifts that cap and returns the
+   > server connection per transaction. The app sets `prepareThreshold=0` for you so
+   > server-side prepared statements don't break across pooled connections.
+   > ```
+   > APP_POSTGRES_URL=jdbc:postgresql://aws-0-<region>.pooler.supabase.com:6543/postgres
+   > APP_POSTGRES_USER=postgres.<project-ref>
+   > ```
+   > Flyway runs migrations on boot, so the user must own the `public` schema (the
    > default `postgres` user does).
 
 ### 2. Render — the Java API
@@ -164,9 +176,20 @@ curl -s -X POST https://living-antispam.onrender.com/analyze \
   **merged to `main`** first — Render and Vercel build `main`, not an open PR.
 - **Render 502, logs show `java.net.SocketException: Network is unreachable`:**
   you used Supabase's **Direct connection** (`db.<ref>.supabase.co`, IPv6-only) —
-  Render can't route IPv6. Switch `APP_POSTGRES_URL` to the **Session pooler**
-  (`aws-0-<region>.pooler.supabase.com:5432`, IPv4) and set `APP_POSTGRES_USER` to
-  `postgres.<project-ref>`.
+  Render can't route IPv6. Switch `APP_POSTGRES_URL` to the IPv4 pooler
+  (`aws-0-<region>.pooler.supabase.com`) and set `APP_POSTGRES_USER` to
+  `postgres.<project-ref>`. Use port **`6543`** (transaction mode), not `5432` —
+  see the next entry for why.
+- **Boot dies with `FATAL: (EMAXCONNSESSION) max clients reached in session mode -
+  max clients are limited to pool_size: 15`:** you're on the **session-mode**
+  pooler (port `5432`). Session mode caps the project's TOTAL client connections at
+  `pool_size`, and a crash-loop leaks those slots faster than Supavisor reaps them,
+  so Flyway can't get a connection on boot. Fix: repoint `APP_POSTGRES_URL` to the
+  **transaction-mode** pooler — same host, port **`6543`** — which lifts the cap and
+  releases server connections per transaction. This both unblocks the stuck deploy
+  (transaction mode doesn't touch the exhausted session slots) and prevents it
+  recurring. The app already bounds its own pool (`APP_DB_POOL_MAX`, default 5) and
+  sets `prepareThreshold=0` for transaction-mode compatibility.
 - **`/info` shows `commit: "unknown"`:** the JDK build image had no `git`. Fixed in
   the `Dockerfile` (installs git + marks `/app` a safe.directory) so the commit is
   stamped — required for the CI live smoke test to detect the new build.
