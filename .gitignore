@@ -188,6 +188,11 @@ docker-compose.override.yml
 *.pth
 *.ckpt
 models/local/
+# ...except the tiny, reproducible bootstrap classifier the app serves in-process
+# (story 04.01). It ships inside the jar, so it must be tracked; regenerate it with
+# ml/train_classifier.py. The large retrained models (Epic 10) are what the rule
+# above keeps out of git.
+!src/main/resources/models/*.onnx
 
 # ---------------------------------------------------------------------------
 # Misc
@@ -198,3 +203,8 @@ temp/
 *.bak
 *.pid
 *.seed
+
+# Python caches (ml/)
+__pycache__/
+*.pyc
+.venv/

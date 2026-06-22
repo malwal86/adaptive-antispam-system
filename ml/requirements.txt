@@ -1,0 +1,7 @@
+# Pinned toolchain for regenerating the bootstrap ONNX classifier (story 04.01).
+# These versions produced the checked-in src/main/resources/models/*.onnx and the
+# parity fixture; the Java side serves it with ONNX Runtime 1.26.x.
+scikit-learn==1.9.0
+skl2onnx==1.20.0
+onnxruntime==1.27.0
+numpy==2.5.0

@@ -30,8 +30,9 @@ public final class AnalysisExplainer {
     public static String explain(Decision decision, List<ReasonCode> codes) {
         if (codes.isEmpty()) {
             return decision == Decision.ALLOW
-                    ? "No hard-rule or model signal fired; provisionally allowed "
-                            + "(placeholder model — Epic 04 adds the calibrated classifier)."
+                    ? "No hard rule fired; the model scored it and it was provisionally allowed "
+                            + "(the calibrated tier policy that turns scores into a verdict arrives "
+                            + "in Epics 04.04–04.05)."
                     : verdict(decision) + ", but no specific reason was recorded.";
         }
         String reasons = codes.stream().map(AnalysisExplainer::phrase).collect(Collectors.joining("; "));

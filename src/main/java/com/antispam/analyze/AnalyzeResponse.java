@@ -23,6 +23,12 @@ import java.util.UUID;
  * {@code reason_codes}/{@code route_used} are illustrative of the fields, not the
  * casing.
  *
+ * <p>The model scores ({@code spamScore}, {@code phishingScore}, {@code modelVersion})
+ * are present only on a {@code model}-route verdict (story 04.01); a hard-rule verdict
+ * short-circuits before the model runs, so they are {@code null} and omitted from the
+ * JSON. They are the raw model outputs — the calibrated confidence and tier policy
+ * that consume them arrive in later stories.
+ *
  * @param emailId          the canonical email this verdict is about
  * @param classificationId the persisted {@code classifications} row id
  * @param tier             verdict tier, lowercase: {@code allow|warn|quarantine|block}
@@ -30,11 +36,15 @@ import java.util.UUID;
  * @param routeUsed        deciding route, lowercase: {@code hard_rule|model}
  * @param latencyMs        milliseconds that route spent deciding
  * @param explanation      one grounded human-readable sentence
+ * @param spamScore        raw model P(spam) in {@code [0,1]}, or {@code null} on a hard-rule verdict
+ * @param phishingScore    raw model P(phish) in {@code [0,1]}, or {@code null} on a hard-rule verdict
+ * @param modelVersion     served model identifier, or {@code null} on a hard-rule verdict
  * @param decidedAt        when the decision was recorded
  * @param duplicate        true when the submitted email was already ingested
  *                         (identical bytes, or analysed by id) — no new canonical
  *                         row was created
  */
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 public record AnalyzeResponse(
         UUID emailId,
         UUID classificationId,
@@ -43,11 +53,15 @@ public record AnalyzeResponse(
         String routeUsed,
         long latencyMs,
         String explanation,
+        Double spamScore,
+        Double phishingScore,
+        String modelVersion,
         Instant decidedAt,
         boolean duplicate) {
 
     /** Maps a persisted {@link Classification} to the response a card renders. */
     public static AnalyzeResponse from(Classification classification, boolean duplicate) {
+        var scores = classification.scores();
         return new AnalyzeResponse(
                 classification.emailId(),
                 classification.id(),
@@ -56,6 +70,9 @@ public record AnalyzeResponse(
                 classification.route().name().toLowerCase(Locale.ROOT),
                 classification.latencyMs(),
                 AnalysisExplainer.explain(classification.decision(), classification.reasonCodes()),
+                scores == null ? null : scores.spamScore(),
+                scores == null ? null : scores.phishingScore(),
+                scores == null ? null : scores.modelVersion(),
                 classification.createdAt(),
                 duplicate);
     }

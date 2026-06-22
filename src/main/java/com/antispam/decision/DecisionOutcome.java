@@ -18,16 +18,29 @@ import java.util.List;
  *                    empty (e.g. a plain allow) but never null
  * @param route       the pipeline stage that produced this outcome
  * @param latencyMs   wall-clock milliseconds that route spent deciding
+ * @param scores      the model's raw probabilities, present only on the
+ *                    {@link RouteUsed#MODEL} path; {@code null} when a hard rule
+ *                    short-circuited (it never invokes the model)
  */
 public record DecisionOutcome(
         Decision decision,
         List<ReasonCode> reasonCodes,
         RouteUsed route,
-        long latencyMs) {
+        long latencyMs,
+        ModelScores scores) {
 
     public DecisionOutcome {
         // Defensive immutable copy so a caller can't mutate the codes after the
         // fact (and to reject a null list / null elements loudly at construction).
         reasonCodes = List.copyOf(reasonCodes);
+    }
+
+    /**
+     * Outcome for a route that produces no model scores — every hard-rule hit, and
+     * any other non-model path. Keeps those call sites free of a {@code null}
+     * scores argument.
+     */
+    public DecisionOutcome(Decision decision, List<ReasonCode> reasonCodes, RouteUsed route, long latencyMs) {
+        this(decision, reasonCodes, route, latencyMs, null);
     }
 }

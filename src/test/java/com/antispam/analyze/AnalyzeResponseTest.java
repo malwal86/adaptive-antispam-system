@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.antispam.decision.Classification;
 import com.antispam.decision.Decision;
+import com.antispam.decision.ModelScores;
 import com.antispam.decision.ReasonCode;
 import com.antispam.decision.RouteUsed;
 import java.time.Instant;
@@ -25,7 +26,7 @@ class AnalyzeResponseTest {
         Instant decidedAt = Instant.parse("2026-06-05T12:00:00Z");
         Classification classification = new Classification(
                 classificationId, emailId, Decision.BLOCK,
-                List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 3L, decidedAt);
+                List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 3L, null, decidedAt);
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, false);
 
@@ -38,13 +39,18 @@ class AnalyzeResponseTest {
         assertThat(response.explanation()).contains("known-malicious host");
         assertThat(response.decidedAt()).isEqualTo(decidedAt);
         assertThat(response.duplicate()).isFalse();
+        // A hard-rule verdict short-circuits the model, so it carries no scores.
+        assertThat(response.spamScore()).isNull();
+        assertThat(response.phishingScore()).isNull();
+        assertThat(response.modelVersion()).isNull();
     }
 
     @Test
-    void maps_a_model_allow_with_no_reasons() {
+    void maps_a_model_allow_with_no_reasons_and_surfaces_the_scores() {
         Classification classification = new Classification(
                 UUID.randomUUID(), UUID.randomUUID(), Decision.ALLOW,
-                List.of(), RouteUsed.MODEL, 0L, Instant.now());
+                List.of(), RouteUsed.MODEL, 0L,
+                new ModelScores(0.12, 0.03, "bootstrap-v1"), Instant.now());
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, true);
 
@@ -53,5 +59,9 @@ class AnalyzeResponseTest {
         assertThat(response.reasonCodes()).isEmpty();
         assertThat(response.explanation()).contains("provisionally allowed");
         assertThat(response.duplicate()).isTrue();
+        // The model route surfaces its raw scores for the card / API.
+        assertThat(response.spamScore()).isEqualTo(0.12);
+        assertThat(response.phishingScore()).isEqualTo(0.03);
+        assertThat(response.modelVersion()).isEqualTo("bootstrap-v1");
     }
 }
