@@ -40,6 +40,12 @@ import org.springframework.stereotype.Service;
  * into the conservative-bias decision and the quarantine-pending SLA, and resolves a successful
  * verdict into a tier under the hard-rule circuit breaker (05.05).
  *
+ * <p><b>Budget gate (story 05.04).</b> Cost control runs <em>before</em> the call: every invocation
+ * first reserves against the {@link LlmBudget}'s daily and monthly caps, and a denial — the cap is
+ * spent, or the budget store is unreachable (fail-closed) — makes no provider call and degrades. A
+ * granted reservation is trued up to the call's real cost afterwards, so the counters track actual
+ * spend and the running total can never exceed the cap.
+ *
  * <p><b>Prompt (story 05.03).</b> The model reasons over a {@link GroundedContext}: the signals the
  * pipeline already extracted, a sender reputation summary, and why the decision was escalated —
  * the trusted, machine-derived basis that keeps it from inventing authoritative-sounding nonsense.
@@ -65,6 +71,7 @@ public class LlmFallbackService {
     private final LlmChatPort port;
     private final LlmProperties properties;
     private final LlmMeter meter;
+    private final LlmBudget budget;
     private final EmailFeatureExtractor featureExtractor;
     private final ReputationService reputation;
 
@@ -83,11 +90,13 @@ public class LlmFallbackService {
             LlmChatPort port,
             LlmProperties properties,
             LlmMeter meter,
+            LlmBudget budget,
             EmailFeatureExtractor featureExtractor,
             ReputationService reputation) {
         this.port = port;
         this.properties = properties;
         this.meter = meter;
+        this.budget = budget;
         this.featureExtractor = featureExtractor;
         this.reputation = reputation;
     }
@@ -102,6 +111,33 @@ public class LlmFallbackService {
      *                          the prompt as the model's "why am I being consulted?" context
      */
     public LlmOutcome classify(Email email, List<RoutingReason> escalationReasons) {
+        // Cost control comes first (story 05.04): reserve against the daily + monthly caps before
+        // any provider call. A denial — the cap is spent, or the budget store is unreachable — makes
+        // no call at all and degrades, so the decision holds its fast-path tier.
+        BudgetReservation reservation = budget.tryReserve();
+        if (!reservation.granted()) {
+            recordDenied(reservation);
+            return LlmOutcome.notAttempted();
+        }
+
+        // Reconcile in a finally so the reservation is always trued up to the real cost, even if the
+        // call path throws unexpectedly — a leaked reservation would otherwise hold budget until its
+        // key's TTL expires. The placeholder cost is 0, so an unexpected throw fully releases it.
+        LlmOutcome outcome = LlmOutcome.notAttempted();
+        try {
+            outcome = callWithRetries(email, escalationReasons);
+            return outcome;
+        } finally {
+            budget.reconcile(reservation, outcome.costUsd());
+        }
+    }
+
+    /**
+     * Runs the call up to {@link #MAX_ATTEMPTS} times — the retry-once-then-fail-degrade state
+     * machine (story 05.02). Always returns an outcome (never throws): an unavailable provider or a
+     * second schema failure degrades. The caller has already reserved budget for this call.
+     */
+    private LlmOutcome callWithRetries(Email email, List<RoutingReason> escalationReasons) {
         String userContent = buildUserContent(email, escalationReasons);
         long startNanos = System.nanoTime();
         BigDecimal cost = BigDecimal.ZERO;
@@ -128,6 +164,20 @@ public class LlmFallbackService {
         log.warn("LLM fallback degraded after {} schema failures", MAX_ATTEMPTS);
         meter.recordDegraded(DegradeReason.SCHEMA, MAX_ATTEMPTS, cost);
         return LlmOutcome.degraded(elapsedMillis(startNanos), cost, MAX_ATTEMPTS);
+    }
+
+    /**
+     * Records a budget denial: a real cap hit is attributed to its {@link BudgetScope}; a denial
+     * with no scope means the budget store was unreachable (fail-closed) and is recorded as an
+     * unavailable degrade — the cost-control infrastructure being down, not the budget being spent.
+     */
+    private void recordDenied(BudgetReservation reservation) {
+        if (reservation.deniedScope() != null) {
+            log.warn("LLM call denied by {} budget cap", reservation.deniedScope().tag());
+            meter.recordBudgetDenied(reservation.deniedScope());
+        } else {
+            meter.recordDegraded(DegradeReason.UNAVAILABLE, 0, BigDecimal.ZERO);
+        }
     }
 
     /**

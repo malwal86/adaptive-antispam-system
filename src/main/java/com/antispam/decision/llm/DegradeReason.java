@@ -13,7 +13,14 @@ public enum DegradeReason {
     SCHEMA("schema"),
 
     /** The provider was disabled, unconfigured, or failed at the transport layer. */
-    UNAVAILABLE("unavailable");
+    UNAVAILABLE("unavailable"),
+
+    /**
+     * The spend cap was reached, so no call was made (story 05.04). A deliberate, cost-safe
+     * refusal — not a failure of the call — but it lands on the same degraded path: the decision
+     * holds its fast-path tier rather than getting an LLM verdict.
+     */
+    BUDGET("budget");
 
     private final String tag;
 

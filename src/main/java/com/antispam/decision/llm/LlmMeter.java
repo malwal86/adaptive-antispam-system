@@ -27,6 +27,9 @@ public class LlmMeter {
     /** Counter — running sum of {@code llm_cost_usd} across calls. */
     static final String COST = "antispam.llm.cost.usd";
 
+    /** Counter, tagged {@code scope=daily|monthly} — calls the budget cap denied (story 05.04). */
+    static final String BUDGET_DENIED = "antispam.llm.budget.denied";
+
     private final MeterRegistry meters;
 
     @Autowired
@@ -51,6 +54,17 @@ public class LlmMeter {
             meters.counter(SCHEMA_RETRY).increment();
         }
         recordCost(costUsd);
+    }
+
+    /**
+     * Records a call the budget cap denied (story 05.04): it counts as a degraded call attributed
+     * to {@link DegradeReason#BUDGET}, plus a scope-tagged budget counter so the daily-vs-monthly
+     * split of stopped spend is directly queryable. No cost — no call was made.
+     */
+    public void recordBudgetDenied(BudgetScope scope) {
+        meters.counter(CALL, "outcome", "degraded").increment();
+        meters.counter(DEGRADED, "reason", DegradeReason.BUDGET.tag()).increment();
+        meters.counter(BUDGET_DENIED, "scope", scope.tag()).increment();
     }
 
     private void recordCost(BigDecimal costUsd) {

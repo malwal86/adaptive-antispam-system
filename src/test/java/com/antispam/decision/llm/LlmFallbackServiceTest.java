@@ -3,7 +3,9 @@ package com.antispam.decision.llm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -52,6 +54,10 @@ class LlmFallbackServiceTest {
     // 0.01 + 0.01 = 0.02 USD, which makes the cost assertions exact.
     private final LlmProperties properties = new LlmProperties(true, new LlmProperties.Cost(0.01, 0.02));
 
+    // Default: an unbounded budget that always grants, so the existing retry/degrade tests are
+    // unaffected by cost control. The budget-specific tests below swap in a stub or mock.
+    private LlmBudget budget = new UnboundedLlmBudget();
+
     @BeforeEach
     void stubReputation() {
         // Grounded context reads the sender's reputation; lenient so the one test that never
@@ -62,7 +68,7 @@ class LlmFallbackServiceTest {
 
     private LlmFallbackService service() {
         return new LlmFallbackService(
-                port, properties, new LlmMeter(registry), new EmailFeatureExtractor(), reputation);
+                port, properties, new LlmMeter(registry), budget, new EmailFeatureExtractor(), reputation);
     }
 
     private static LlmRawResponse response(String json) {
@@ -312,5 +318,68 @@ class LlmFallbackServiceTest {
         service();
 
         verify(port, never()).complete(anyString(), anyString());
+    }
+
+    @Test
+    void does_not_call_the_provider_when_the_budget_cap_denies_the_call() {
+        // The daily cap is spent: the gate denies before any provider call (story 05.04).
+        budget = mock(LlmBudget.class);
+        when(budget.tryReserve()).thenReturn(BudgetReservation.denied(BudgetScope.DAILY));
+
+        LlmOutcome outcome = service().classify(email, REASONS);
+
+        assertThat(outcome.degraded()).isTrue();
+        assertThat(outcome.attempts()).isZero();
+        assertThat(outcome.costUsd()).isEqualByComparingTo("0");
+        verify(port, never()).complete(anyString(), anyString());
+        assertThat(registry.get(LlmMeter.BUDGET_DENIED).tag("scope", "daily").counter().count())
+                .isEqualTo(1.0);
+        assertThat(registry.get(LlmMeter.DEGRADED).tag("reason", "budget").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void fail_degrades_without_calling_the_provider_when_the_budget_store_is_unavailable() {
+        // Redis down: the gate fails closed (denies, no scope) rather than spending blind.
+        budget = mock(LlmBudget.class);
+        when(budget.tryReserve()).thenReturn(BudgetReservation.unavailable());
+
+        LlmOutcome outcome = service().classify(email, REASONS);
+
+        assertThat(outcome.degraded()).isTrue();
+        assertThat(outcome.attempts()).isZero();
+        verify(port, never()).complete(anyString(), anyString());
+        // An outage of the cost-control store is recorded as unavailable, not as budget-spent.
+        assertThat(registry.get(LlmMeter.DEGRADED).tag("reason", "unavailable").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void reconciles_the_reservation_with_the_actual_cost_after_a_call() {
+        budget = mock(LlmBudget.class);
+        BudgetReservation reservation =
+                BudgetReservation.granted(new BigDecimal("0.01"), "day", "month");
+        when(budget.tryReserve()).thenReturn(reservation);
+        when(port.complete(anyString(), anyString())).thenReturn(response(validJson()));
+
+        service().classify(email, REASONS);
+
+        // The reservation is trued up to the call's real cost (0.02 USD) so the counter tracks spend.
+        verify(budget).reconcile(eq(reservation), eq(new BigDecimal("0.020000")));
+    }
+
+    @Test
+    void reconciles_with_zero_cost_when_the_provider_was_unavailable() {
+        budget = mock(LlmBudget.class);
+        BudgetReservation reservation =
+                BudgetReservation.granted(new BigDecimal("0.01"), "day", "month");
+        when(budget.tryReserve()).thenReturn(reservation);
+        when(port.complete(anyString(), anyString()))
+                .thenThrow(new LlmUnavailableException("disabled"));
+
+        service().classify(email, REASONS);
+
+        // No call landed, so the whole reservation is released back (reconcile with zero cost).
+        verify(budget).reconcile(eq(reservation), eq(BigDecimal.ZERO));
     }
 }
