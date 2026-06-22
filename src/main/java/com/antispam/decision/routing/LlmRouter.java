@@ -19,12 +19,15 @@ import java.util.Objects;
  * predicates: {@link Policy#llmThreshold()} is the confidence floor, and
  * {@link Policy#routingBandWidth()} is the boundary band half-width.
  *
- * <p><b>Beta variance widens the band.</b> The sender's reputation uncertainty —
- * {@link FusedScore#uncertaintyBand()}, propagated from the Beta variance — both fires the
- * new-sender predicate on its own <em>and</em> widens the boundary-proximity band, because that
- * variance is largest exactly where the conditional-independence approximation behind the fusion
- * is weakest (PRD §Subsystem 2). A static utility, mirroring {@link com.antispam.decision.LogOddsFusion}:
- * the routing rule is a pure function of the policy and the scores, with no state of its own.
+ * <p><b>Two uncertainty signals from the same Beta variance.</b> The new-sender predicate fires on
+ * {@link FusedScore#senderUncertainty()} — the reputation standard deviation (√variance), which is
+ * <em>content-independent</em>, so an unseen sender escalates however confident the content model is
+ * (a confident verdict on a brand-new sender must still be checked). The boundary-proximity predicate
+ * instead widens its band by {@link FusedScore#uncertaintyBand()} — the posterior-attenuated band —
+ * because near a tier cut-point the relevant uncertainty <em>is</em> in posterior space. Both come
+ * from the Beta variance that is largest where the conditional-independence approximation is weakest
+ * (PRD §Subsystem 2). A static utility, mirroring {@link com.antispam.decision.LogOddsFusion}: the
+ * routing rule is a pure function of the policy and the scores, with no state of its own.
  */
 public final class LlmRouter {
 
@@ -49,7 +52,7 @@ public final class LlmRouter {
         if (modelConfidence(scores.calibratedConfidence()) < policy.llmThreshold()) {
             reasons.add(RoutingReason.LOW_MODEL_CONFIDENCE);
         }
-        if (fused.uncertaintyBand() >= policy.routingBandWidth()) {
+        if (fused.senderUncertainty() >= policy.routingBandWidth()) {
             reasons.add(RoutingReason.NEW_SENDER_UNCERTAINTY);
         }
         if (nearTierBoundary(policy, fused)) {

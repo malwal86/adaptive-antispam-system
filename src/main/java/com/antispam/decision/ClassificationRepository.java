@@ -156,6 +156,10 @@ public class ClassificationRepository {
      * {@code posterior} is the discriminator: it is non-null exactly when reputation was
      * fused with a calibrated model score. The {@code posteriorLogit} is re-derived from
      * the stored posterior rather than persisted, since the two are inverses.
+     *
+     * <p>{@code senderUncertainty} is reconstructed as {@code 0}: it is a decide-time routing
+     * input (story 05.01), not persisted, and routing never re-runs against a stored decision —
+     * the read path serves the recorded verdict, so the value is not needed here.
      */
     private static FusedScore fusedScore(java.sql.ResultSet rs) throws java.sql.SQLException {
         double posterior = rs.getDouble("posterior");
@@ -163,7 +167,7 @@ public class ClassificationRepository {
             return null;
         }
         return new FusedScore(
-                posterior, LogOddsFusion.logit(posterior), rs.getDouble("uncertainty_band"));
+                posterior, LogOddsFusion.logit(posterior), rs.getDouble("uncertainty_band"), 0.0);
     }
 
     private static List<ReasonCode> reasonCodes(Array array) throws java.sql.SQLException {

@@ -21,9 +21,11 @@ package com.antispam.decision;
  * <p><b>Conditional independence.</b> This is the naive-Bayes log-odds combination,
  * valid under the stated approximation that content ⊥ sender-history given the label.
  * The approximation is weakest for senders we know little about, which is exactly where
- * the Beta variance is largest — so {@link #fuse} propagates that variance into an
- * {@link FusedScore#uncertaintyBand() uncertainty band} that widens with it, the signal
- * Epic 05 uses to route the shakiest cases to the LLM.
+ * the Beta variance is largest — so {@link #fuse} propagates that variance into two routing
+ * signals Epic 05 uses: the posterior-attenuated {@link FusedScore#uncertaintyBand() uncertainty
+ * band} (for boundary proximity) and the content-independent {@link FusedScore#senderUncertainty()
+ * sender uncertainty} = √variance (for the new-sender predicate, so an unseen sender escalates
+ * however confident the content model is).
  *
  * <p>A pure, deterministic function with no I/O: the same inputs always yield the same
  * {@link FusedScore}, which is what lets fusion be unit-tested against hand-computed
@@ -66,7 +68,11 @@ public final class LogOddsFusion {
         double posteriorLogit = logit(reputationPrior) + logit(modelConfidence) - logit(trainingBaseRate);
         double posterior = sigmoid(posteriorLogit);
         double band = uncertaintyBand(reputationPrior, posterior, priorVariance);
-        return new FusedScore(posterior, posteriorLogit, band);
+        // The sender's reputation standard deviation in probability space — content-independent,
+        // unlike the posterior-attenuated band — so the new-sender routing predicate (05.01) fires
+        // on an unseen sender regardless of how confident the content model is.
+        double senderUncertainty = Math.sqrt(priorVariance);
+        return new FusedScore(posterior, posteriorLogit, band, senderUncertainty);
     }
 
     /** The log-odds of {@code p}, clamped off the 0/1 boundary to stay finite. */
