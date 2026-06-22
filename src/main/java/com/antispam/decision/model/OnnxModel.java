@@ -68,14 +68,32 @@ public class OnnxModel {
 
     private static OrtSession loadSession(OrtEnvironment environment) {
         byte[] modelBytes = readModelBytes();
-        try {
-            return environment.createSession(modelBytes, new OrtSession.SessionOptions());
+        try (OrtSession.SessionOptions options = leanOptions()) {
+            return environment.createSession(modelBytes, options);
         } catch (OrtException e) {
             // A model that won't load is a packaging/export defect, not a runtime
             // condition to recover from — fail fast at startup rather than serve a
             // half-initialized classifier.
             throw new IllegalStateException("failed to create ONNX session from " + MODEL_RESOURCE, e);
         }
+    }
+
+    /**
+     * Session options tuned for a tiny model on a small, shared container. By
+     * default ONNX Runtime sizes its thread pool to the host CPU count and reserves
+     * an allocation arena — on a 0.5-CPU / 512MB instance that memory and those
+     * thread stacks can OOM the process at startup. This model is a single
+     * matrix-multiply, so one thread is plenty and the arena's upfront reservation
+     * buys nothing. Keeping ORT lean is what lets it co-exist with the JVM in the
+     * container's memory budget.
+     */
+    private static OrtSession.SessionOptions leanOptions() throws OrtException {
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        options.setIntraOpNumThreads(1);
+        options.setInterOpNumThreads(1);
+        options.setCPUArenaAllocator(false);
+        options.setMemoryPatternOptimization(false);
+        return options;
     }
 
     private static byte[] readModelBytes() {
