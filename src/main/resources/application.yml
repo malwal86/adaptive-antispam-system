@@ -41,6 +41,35 @@ spring:
     redis:
       url: ${APP_REDIS_URL:}
 
+  # LLM fallback provider (story 05.02). Spring AI's OpenAI auto-configuration builds the
+  # ChatModel the SpringAiLlmChatPort wraps; the model name is config, not code, so the
+  # provider/model is a swap-only demo feature (PRD §Subsystem 5).
+  #
+  # The OpenAI chat auto-config is on by default (matchIfMissing) and eagerly builds the
+  # model bean, which ASSERTS a non-blank api key at startup. So the key defaults to a
+  # non-blank placeholder, not empty: the bean constructs and the context boots with no real
+  # key (local, CI, a keyless deploy), and a routed decision only ever calls the provider when
+  # antispam.llm.enabled=true — which the hosted deploy sets together with a real OPENAI_API_KEY.
+  # With the placeholder key and the flag off, no call is ever made; with the flag on but the
+  # key still the placeholder, the call 401s and the decision fail-degrades (never crashes).
+  #
+  # Only chat is used. The other OpenAI models (embedding, image, moderation, audio) are also
+  # on-by-default and would each eagerly assert the key, so they are switched off — embeddings
+  # here are the project's own ONNX model (story 04.03), not OpenAI's.
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:placeholder-no-llm-key}
+      chat:
+        options:
+          model: ${ANTISPAM_LLM_MODEL:gpt-4o-mini}
+    model:
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+
   # Kafka producer for the event spine (story 02.01). Broker location reuses the
   # single APP_KAFKA_BOOTSTRAP_SERVERS contract (relaxed-bound as
   # app.kafka-bootstrap-servers) so there is one place it is configured.
@@ -187,6 +216,18 @@ antispam:
     # Redis is unavailable the read transparently falls back to Postgres.
     cache:
       enabled: ${ANTISPAM_REPUTATION_CACHE_ENABLED:false}
+  # LLM fallback (story 05.02). The uncertain ~5% the router escalates (05.01) is sent to
+  # Spring AI's ChatClient for a strictly-typed verdict. Off by default so local dev and
+  # the full-context tests never reach a provider — a routed decision then fail-degrades on
+  # the fast-path posterior. The hosted deploy sets ANTISPAM_LLM_ENABLED=true with an
+  # OPENAI_API_KEY. cost.*-per-1k-tokens price the call so llm_cost_usd is recorded per
+  # classification (the rolling budget cap that consumes it is story 05.04); the defaults
+  # are illustrative GPT-4o-mini-class rates, tunable here without a redeploy.
+  llm:
+    enabled: ${ANTISPAM_LLM_ENABLED:false}
+    cost:
+      input-per-1k-tokens: 0.00015
+      output-per-1k-tokens: 0.00060
   seed:
     enabled: false
     corpus-dir: seed-corpus

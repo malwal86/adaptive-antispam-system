@@ -27,7 +27,7 @@ class AnalyzeResponseTest {
         Classification classification = new Classification(
                 classificationId, emailId, Decision.BLOCK,
                 List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 3L, null, null,
-                "bootstrap-v1", decidedAt);
+                "bootstrap-v1", null, decidedAt);
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, false);
 
@@ -55,7 +55,7 @@ class AnalyzeResponseTest {
         Classification classification = new Classification(
                 UUID.randomUUID(), UUID.randomUUID(), Decision.ALLOW,
                 List.of(), RouteUsed.MODEL, 0L,
-                new ModelScores(0.12, 0.03, "bootstrap-v1"), null, "bootstrap-v1", Instant.now());
+                new ModelScores(0.12, 0.03, "bootstrap-v1"), null, "bootstrap-v1", null, Instant.now());
 
         AnalyzeResponse response = AnalyzeResponse.from(classification, true);
 

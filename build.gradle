@@ -19,6 +19,15 @@ repositories {
     mavenCentral()
 }
 
+// Spring AI supplies the LLM fallback's ChatClient and the provider auto-config
+// (story 05.02). The BOM pins the module versions so the OpenAI starter and the
+// core stay in lockstep; 1.0.0 is the GA line built on Spring Boot 3.4.
+dependencyManagement {
+    imports {
+        mavenBom 'org.springframework.ai:spring-ai-bom:1.0.0'
+    }
+}
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -50,6 +59,15 @@ dependencies {
     // model-server hop on the synchronous <100ms decision path. The artifact bundles
     // native libraries for linux-x64 (Render) and macOS arm64 (local dev).
     implementation 'com.microsoft.onnxruntime:onnxruntime:1.26.0'
+
+    // LLM fallback (story 05.02): Spring AI's ChatClient over a pluggable provider
+    // (OpenAI is the default per PRD §Subsystem 5). The provider is swapped by config
+    // — a different starter/model on the classpath changes the auto-configured
+    // ChatModel bean, while the LlmChatPort the decision path depends on is unchanged.
+    // The path is engaged only when antispam.llm.enabled=true (set in the hosted
+    // deploy alongside an API key); without it the bean still constructs and routed
+    // mail fail-degrades, so boot stays green locally and in CI with no key.
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     // Real Postgres in integration tests so the immutability trigger and

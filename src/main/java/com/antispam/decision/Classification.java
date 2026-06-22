@@ -1,5 +1,6 @@
 package com.antispam.decision;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -13,21 +14,24 @@ import java.util.UUID;
  * <p>Story 01.04 writes hard-rule and model rows; story 04.01 adds the model's
  * {@code spam_score}/{@code phishing_score}/{@code model_version} via {@code scores};
  * story 04.04 adds the reputation-fused {@code posterior} and uncertainty band via
- * {@code fused}; story 04.05 adds the {@code policyVersion} the decision was made under.
- * The data model's {@code llm_cost_usd} column arrives with the epic that produces it
- * (05) rather than being speculatively modeled here.
+ * {@code fused}; story 04.05 adds the {@code policyVersion} the decision was made under;
+ * story 05.02 adds {@code llmCostUsd}, the cost of the LLM fallback when the decision was
+ * routed to it.
  *
  * @param id            canonical identifier of this classification
  * @param emailId       the {@code emails} row this decision is about
  * @param decision      the verdict tier
  * @param reasonCodes   the codes justifying it (may be empty)
  * @param route         the pipeline stage that produced it
- * @param latencyMs     milliseconds that route spent deciding
+ * @param latencyMs     milliseconds that route spent deciding (includes the LLM call on an
+ *                      {@link RouteUsed#LLM} row)
  * @param scores        the model's raw scores, or {@code null} for a hard-rule row
  * @param fused         the reputation-fused posterior, or {@code null} on a hard-rule row
  *                      or a model row scored before any calibration was installed
  * @param policyVersion the active policy the decision was made under, or {@code null} for a
  *                      decision recorded before story 04.05
+ * @param llmCostUsd    the USD cost of the LLM call on an {@link RouteUsed#LLM} row, or
+ *                      {@code null} on any row whose decision did not call the LLM (story 05.02)
  * @param createdAt     when the decision was recorded
  */
 public record Classification(
@@ -40,6 +44,7 @@ public record Classification(
         ModelScores scores,
         FusedScore fused,
         String policyVersion,
+        BigDecimal llmCostUsd,
         Instant createdAt) {
 
     public Classification {

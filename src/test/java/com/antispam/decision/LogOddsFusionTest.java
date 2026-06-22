@@ -77,6 +77,31 @@ class LogOddsFusionTest {
     }
 
     @Test
+    void reports_sender_uncertainty_as_the_reputation_standard_deviation() {
+        // senderUncertainty is √variance — the routing signal for unseen senders (story 05.01).
+        assertThat(LogOddsFusion.fuse(0.5, 0.04, 0.8, 0.6).senderUncertainty())
+                .isCloseTo(0.2, within(1e-12));
+        assertThat(LogOddsFusion.fuse(0.5, 0.0, 0.8, 0.6).senderUncertainty()).isZero();
+    }
+
+    @Test
+    void sender_uncertainty_is_content_independent_unlike_the_attenuated_band() {
+        // The bug this guards: a confident verdict drives the posterior to the saturated tail,
+        // where the attenuated band collapses toward zero — but the sender is just as unknown, so
+        // senderUncertainty must NOT shrink with content confidence (it is the same √variance for a
+        // confident and an ambiguous model score). Otherwise a new sender's confident mail would
+        // wrongly skip the LLM.
+        double variance = 0.0833;
+        FusedScore confident = LogOddsFusion.fuse(0.5, variance, 0.999, 0.5);
+        FusedScore ambiguous = LogOddsFusion.fuse(0.5, variance, 0.5, 0.5);
+
+        assertThat(confident.senderUncertainty()).isEqualTo(ambiguous.senderUncertainty());
+        assertThat(confident.senderUncertainty()).isCloseTo(Math.sqrt(variance), within(1e-12));
+        // ...whereas the attenuated band does collapse as the verdict becomes confident.
+        assertThat(confident.uncertaintyBand()).isLessThan(ambiguous.uncertaintyBand());
+    }
+
+    @Test
     void stays_finite_and_in_range_at_the_probability_edges() {
         FusedScore certainSpam = LogOddsFusion.fuse(1.0, 0.0, 1.0, 0.5);
         FusedScore certainHam = LogOddsFusion.fuse(0.0, 0.0, 0.0, 0.5);

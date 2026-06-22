@@ -52,7 +52,7 @@ class PolicyDecisionServiceTest {
 
     /** A fused score far from every LENIENT boundary with no sender uncertainty (no routing). */
     private static FusedScore posterior(double p) {
-        return new FusedScore(p, 0.0, 0.0);
+        return new FusedScore(p, 0.0, 0.0, 0.0);
     }
 
     @Test
