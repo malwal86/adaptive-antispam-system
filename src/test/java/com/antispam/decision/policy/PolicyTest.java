@@ -57,6 +57,6 @@ class PolicyTest {
     }
 
     private static Policy policy(double warn, double quarantine, double block) {
-        return new Policy("test-v1", true, warn, quarantine, block, 0.40, "bootstrap-v1", Instant.EPOCH);
+        return new Policy("test-v1", true, warn, quarantine, block, 0.40, 0.05, "bootstrap-v1", Instant.EPOCH);
     }
 }

@@ -106,11 +106,11 @@ class PolicyDecisionIntegrationTest extends AbstractPostgresIntegrationTest {
         double above = Math.min(1.0, p + 0.01);
         double below = Math.max(0.0, p - 0.01);
 
-        policies.save(new Policy("allow-all-v2", false, above, above, above, 0.40, OnnxModel.MODEL_VERSION, Instant.EPOCH));
+        policies.save(new Policy("allow-all-v2", false, above, above, above, 0.40, 0.05, OnnxModel.MODEL_VERSION, Instant.EPOCH));
         policies.activate("allow-all-v2");
         Decision underLenient = decisionService.decide(email).decision();
 
-        policies.save(new Policy("block-all-v2", false, below, below, below, 0.40, OnnxModel.MODEL_VERSION, Instant.EPOCH));
+        policies.save(new Policy("block-all-v2", false, below, below, below, 0.40, 0.05, OnnxModel.MODEL_VERSION, Instant.EPOCH));
         policies.activate("block-all-v2");
         Decision underStrict = decisionService.decide(email).decision();
 

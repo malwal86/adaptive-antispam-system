@@ -6,6 +6,10 @@ import com.antispam.decision.FusedScore;
 import com.antispam.decision.ReasonCode;
 import com.antispam.decision.RouteUsed;
 import com.antispam.decision.policy.BurstOverride.Escalation;
+import com.antispam.decision.routing.LlmRouter;
+import com.antispam.decision.routing.RoutingDecision;
+import com.antispam.decision.routing.RoutingMeter;
+import com.antispam.decision.routing.RoutingReason;
 import com.antispam.ingest.Email;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,37 +37,57 @@ import org.springframework.stereotype.Service;
  * final tier is the more severe of the posterior-derived tier and the override's floor, so
  * a weak override never softens a strong score. The {@link ReasonCode#BURST_OVERRIDE} reason
  * is recorded only when the override actually changed the tier.
+ *
+ * <p><b>LLM routing (story 05.01).</b> After tiering, a fused model decision is run through the
+ * {@link LlmRouter} predicates; if it is uncertain enough the route is promoted to
+ * {@link RouteUsed#LLM} and the firing {@link RoutingReason}s are recorded. The posterior-derived
+ * tier still stands as the provisional verdict — the actual LLM call and quarantine-pending
+ * resolution land in later stories (05.02, 05.06). A hard-rule verdict (authoritative) and an
+ * unfused model row (no posterior to judge) are never routed.
  */
 @Service
 public class PolicyDecisionService {
 
     /**
      * The outcome of tiering: the final verdict, the reason codes justifying it (the
-     * route's own reasons plus any override reason), and the policy that produced it.
+     * route's own reasons plus any override reason), the route that produced it, the routing
+     * reasons (empty unless escalated to the LLM), and the policy that produced it.
      *
-     * @param decision     the final tier
-     * @param reasonCodes  the codes justifying it (may be empty)
-     * @param policyVersion the active policy this decision was made under
+     * @param decision       the final tier
+     * @param reasonCodes    the codes justifying the verdict (may be empty)
+     * @param route          the final route, promoted to {@link RouteUsed#LLM} when escalated
+     * @param routingReasons why it was escalated to the LLM; empty when it stayed on the fast path
+     * @param policyVersion  the active policy this decision was made under
      */
-    public record TieredDecision(Decision decision, List<ReasonCode> reasonCodes, String policyVersion) {
+    public record TieredDecision(
+            Decision decision,
+            List<ReasonCode> reasonCodes,
+            RouteUsed route,
+            List<RoutingReason> routingReasons,
+            String policyVersion) {
 
         public TieredDecision {
             reasonCodes = List.copyOf(reasonCodes);
+            routingReasons = List.copyOf(routingReasons);
         }
     }
 
     private final PolicyRepository policies;
     private final BurstOverride burstOverride;
+    private final RoutingMeter routingMeter;
 
     @Autowired
-    public PolicyDecisionService(PolicyRepository policies, BurstOverride burstOverride) {
+    public PolicyDecisionService(
+            PolicyRepository policies, BurstOverride burstOverride, RoutingMeter routingMeter) {
         this.policies = policies;
         this.burstOverride = burstOverride;
+        this.routingMeter = routingMeter;
     }
 
     /**
-     * Derives the final tier for {@code email} from its decision and fused posterior under
-     * the active policy.
+     * Derives the final tier and route for {@code email} from its decision and fused posterior
+     * under the active policy: the posterior-derived tier (with any burst-override escalation),
+     * then the LLM-routing predicates that may promote the route to {@link RouteUsed#LLM}.
      *
      * @param outcome the route's verdict (hard-rule, authoritative; or model, provisional)
      * @param fused   the fused posterior, or {@code null} when the model score was not fused
@@ -86,7 +110,35 @@ public class PolicyDecisionService {
             }
         }
 
-        return new TieredDecision(tier, reasons, active.version());
+        RouteUsed route = outcome.route();
+        List<RoutingReason> routingReasons = List.of();
+        if (eligibleForRouting(outcome, fused)) {
+            RoutingDecision routing = LlmRouter.decide(active, fused, outcome.scores());
+            if (routing.routed()) {
+                route = RouteUsed.LLM;
+                routingReasons = routing.reasons();
+            }
+        }
+        recordRouting(route, routingReasons);
+
+        return new TieredDecision(tier, reasons, route, routingReasons, active.version());
+    }
+
+    /**
+     * Whether {@code outcome} can be escalated to the LLM: only a fused model decision is. A
+     * hard-rule verdict is authoritative and skipped the model, so it never escalates; an unfused
+     * model row (no calibration installed) has no posterior for the predicates to judge.
+     */
+    private static boolean eligibleForRouting(DecisionOutcome outcome, FusedScore fused) {
+        return outcome.route() == RouteUsed.MODEL && fused != null;
+    }
+
+    private void recordRouting(RouteUsed route, List<RoutingReason> routingReasons) {
+        if (route == RouteUsed.LLM) {
+            routingMeter.recordRouted(routingReasons);
+        } else {
+            routingMeter.recordFastPath();
+        }
     }
 
     /**

@@ -86,8 +86,10 @@ class FusionIntegrationTest extends AbstractPostgresIntegrationTest {
 
         Classification decided = decisionService.decide(email);
 
-        // The model ran and its score was fused: the posterior is recorded.
-        assertThat(decided.route()).isEqualTo(RouteUsed.MODEL);
+        // The model ran and its score was fused: the posterior is recorded. The route is LLM,
+        // not MODEL — this brand-new sender carries the prior's maximum Beta variance, so the
+        // new-sender routing predicate fires and escalates it (story 05.01 end-to-end).
+        assertThat(decided.route()).isEqualTo(RouteUsed.LLM);
         assertThat(decided.scores()).isNotNull();
         assertThat(decided.fused()).isNotNull();
         FusedScore fused = decided.fused();

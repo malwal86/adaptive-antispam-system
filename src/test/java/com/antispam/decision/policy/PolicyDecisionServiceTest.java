@@ -12,7 +12,10 @@ import com.antispam.decision.ReasonCode;
 import com.antispam.decision.RouteUsed;
 import com.antispam.decision.TestEmails;
 import com.antispam.decision.policy.PolicyDecisionService.TieredDecision;
+import com.antispam.decision.routing.RoutingMeter;
+import com.antispam.decision.routing.RoutingReason;
 import com.antispam.ingest.Email;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -34,15 +37,20 @@ class PolicyDecisionServiceTest {
     private PolicyRepository policies;
 
     private final Email email = TestEmails.bodyContaining("hello");
-    private static final ModelScores SCORES = new ModelScores(0.4, 0.2, "bootstrap-v1", 0.6);
+    // Confident scores (calibrated 0.97 → high model confidence) so the existing tiering tests
+    // exercise tiering alone; the routing-specific tests below pick scores that trigger routing.
+    private static final ModelScores SCORES = new ModelScores(0.9, 0.07, "bootstrap-v1", 0.97);
 
     private static final Policy LENIENT = policy("lenient-v1", 0.50, 0.80, 0.95);
     private static final Policy STRICT = policy("strict-v1", 0.20, 0.50, 0.70);
 
+    private final RoutingMeter routingMeter = new RoutingMeter(new SimpleMeterRegistry());
+
     private PolicyDecisionService service(BurstOverride burst) {
-        return new PolicyDecisionService(policies, burst);
+        return new PolicyDecisionService(policies, burst, routingMeter);
     }
 
+    /** A fused score far from every LENIENT boundary with no sender uncertainty (no routing). */
     private static FusedScore posterior(double p) {
         return new FusedScore(p, 0.0, 0.0);
     }
@@ -128,8 +136,81 @@ class PolicyDecisionServiceTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void escalates_an_uncertain_model_decision_to_the_llm_keeping_its_provisional_tier() {
+        when(policies.findActive()).thenReturn(Optional.of(LENIENT));
+        // Low calibrated confidence (0.55 → model confidence 0.10 < llmThreshold 0.40); posterior
+        // 0.65 is a clear WARN, far from every boundary, with no sender uncertainty.
+        DecisionOutcome lowConfidence = modelOutcome(new ModelScores(0.4, 0.2, "bootstrap-v1", 0.55));
+
+        TieredDecision tiered = service(noBurst()).decide(email, lowConfidence, posterior(0.65));
+
+        assertThat(tiered.route()).isEqualTo(RouteUsed.LLM);
+        assertThat(tiered.routingReasons()).containsExactly(RoutingReason.LOW_MODEL_CONFIDENCE);
+        // The posterior-derived tier still stands as the provisional verdict (no LLM call yet).
+        assertThat(tiered.decision()).isEqualTo(Decision.WARN);
+    }
+
+    @Test
+    void keeps_a_confident_low_uncertainty_mid_tier_decision_on_the_fast_path() {
+        when(policies.findActive()).thenReturn(Optional.of(LENIENT));
+
+        // Confident SCORES (0.97), posterior 0.65 far from boundaries, no sender uncertainty.
+        TieredDecision tiered = service(noBurst()).decide(email, modelOutcome(), posterior(0.65));
+
+        assertThat(tiered.route()).isEqualTo(RouteUsed.MODEL);
+        assertThat(tiered.routingReasons()).isEmpty();
+    }
+
+    @Test
+    void never_routes_a_hard_rule_verdict_to_the_llm() {
+        when(policies.findActive()).thenReturn(Optional.of(LENIENT));
+        DecisionOutcome hardRule = new DecisionOutcome(
+                Decision.BLOCK, List.of(ReasonCode.KNOWN_BAD_URL), RouteUsed.HARD_RULE, 2L);
+
+        TieredDecision tiered = service(noBurst()).decide(email, hardRule, null);
+
+        assertThat(tiered.route()).isEqualTo(RouteUsed.HARD_RULE);
+        assertThat(tiered.routingReasons()).isEmpty();
+    }
+
+    @Test
+    void never_routes_an_unfused_model_decision_with_no_posterior_to_judge() {
+        when(policies.findActive()).thenReturn(Optional.of(LENIENT));
+
+        // No fused posterior (uncalibrated model): there is nothing for the predicates to judge.
+        TieredDecision tiered = service(noBurst()).decide(email, modelOutcome(), null);
+
+        assertThat(tiered.route()).isEqualTo(RouteUsed.MODEL);
+        assertThat(tiered.routingReasons()).isEmpty();
+    }
+
+    @Test
+    void records_the_routed_and_fast_path_decisions_as_a_metric() {
+        when(policies.findActive()).thenReturn(Optional.of(LENIENT));
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        PolicyDecisionService service =
+                new PolicyDecisionService(policies, noBurst(), new RoutingMeter(registry));
+        DecisionOutcome lowConfidence = modelOutcome(new ModelScores(0.4, 0.2, "bootstrap-v1", 0.55));
+
+        service.decide(email, lowConfidence, posterior(0.65));        // routed (low confidence)
+        service.decide(email, modelOutcome(), posterior(0.65));       // confident → fast path
+
+        assertThat(registry.get("antispam.decision.routing").tag("routed", "true").counter().count())
+                .isEqualTo(1.0);
+        assertThat(registry.get("antispam.decision.routing").tag("routed", "false").counter().count())
+                .isEqualTo(1.0);
+        assertThat(registry.get("antispam.decision.routing.reason")
+                .tag("reason", RoutingReason.LOW_MODEL_CONFIDENCE.name()).counter().count())
+                .isEqualTo(1.0);
+    }
+
     private static DecisionOutcome modelOutcome() {
-        return new DecisionOutcome(Decision.ALLOW, List.of(), RouteUsed.MODEL, 1L, SCORES);
+        return modelOutcome(SCORES);
+    }
+
+    private static DecisionOutcome modelOutcome(ModelScores scores) {
+        return new DecisionOutcome(Decision.ALLOW, List.of(), RouteUsed.MODEL, 1L, scores);
     }
 
     private static BurstOverride noBurst() {
@@ -137,6 +218,6 @@ class PolicyDecisionServiceTest {
     }
 
     private static Policy policy(String version, double warn, double quarantine, double block) {
-        return new Policy(version, true, warn, quarantine, block, 0.40, "bootstrap-v1", Instant.EPOCH);
+        return new Policy(version, true, warn, quarantine, block, 0.40, 0.05, "bootstrap-v1", Instant.EPOCH);
     }
 }
