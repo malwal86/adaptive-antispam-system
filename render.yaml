@@ -53,3 +53,13 @@ services:
       #     patterns allowed, e.g. "https://*.vercel.app,https://<your-domain>". ---
       - key: ANTISPAM_CONSOLE_ALLOWED_ORIGINS
         sync: false
+      # --- OpenAI LLM fallback (stories 05.01/05.02). The uncertain ~5% the router
+      #     escalates is sent to Spring AI's OpenAI ChatClient. ENABLED must be true
+      #     for the call to happen (off => fail-degrade to the fast-path posterior);
+      #     the API key is the secret, set its value in the dashboard. ---
+      - key: ANTISPAM_LLM_ENABLED
+        value: "true"
+      - key: ANTISPAM_LLM_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_API_KEY
+        sync: false # sk-proj-... — set the real value in the Render dashboard

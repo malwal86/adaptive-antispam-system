@@ -6,6 +6,8 @@ import com.antispam.decision.Decision;
 import com.antispam.decision.ReasonCode;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * The explanation is grounded: every clause traces to a reason code that fired,
@@ -66,5 +68,34 @@ class AnalysisExplainerTest {
         assertThat(explanation)
                 .contains("Quarantined")
                 .contains("detected sending burst");
+    }
+
+    @Test
+    void llm_content_codes_render_their_own_phrases() {
+        String explanation = AnalysisExplainer.explain(
+                Decision.QUARANTINE,
+                List.of(ReasonCode.PRIZE_OR_LOTTERY_BAIT, ReasonCode.SENDER_REPUTATION_RISK));
+
+        assertThat(explanation)
+                .contains("prize, lottery")
+                .contains("reputation is poor")
+                .contains(";");
+    }
+
+    /**
+     * The reason-code enum is the single shared vocabulary (story 05.03 AC 3): every member —
+     * including the codes the LLM may assert — must render a real UI phrase, never the
+     * "no specific reason" placeholder. The exhaustive switch enforces this at compile time; this
+     * pins it at runtime so a future code cannot be given a blank or fallback phrase.
+     */
+    @ParameterizedTest
+    @EnumSource(ReasonCode.class)
+    void every_reason_code_has_a_grounded_phrase(ReasonCode code) {
+        String explanation = AnalysisExplainer.explain(Decision.BLOCK, List.of(code));
+
+        assertThat(explanation)
+                .startsWith("Blocked:")
+                .doesNotContain("no specific reason")
+                .hasSizeGreaterThan("Blocked: .".length());
     }
 }

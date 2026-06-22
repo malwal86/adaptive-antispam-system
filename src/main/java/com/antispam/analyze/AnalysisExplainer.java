@@ -54,6 +54,20 @@ public final class AnalysisExplainer {
                     "the message impersonates a high-value brand but fails authentication (DMARC)";
             case BURST_OVERRIDE ->
                     "it is part of a detected sending burst, which escalated the verdict";
+            case SUSPICIOUS_LINK ->
+                    "a link shows phishing tells (a raw-IP or punycode host, or a look-alike domain)";
+            case CREDENTIAL_PHISHING ->
+                    "it solicits credentials or imitates an account-security flow";
+            case URGENCY_PRESSURE ->
+                    "it uses manufactured urgency or pressure tactics to force a quick action";
+            case PRIZE_OR_LOTTERY_BAIT ->
+                    "it dangles a prize, lottery, or other financial windfall as bait";
+            case UNSOLICITED_BULK ->
+                    "it is unsolicited bulk or promotional content with no prior relationship";
+            case SENDER_REPUTATION_RISK ->
+                    "the sender's reputation is poor or too uncertain to trust";
+            case BENIGN_CONTENT ->
+                    "no abusive signal was found in the message";
         };
     }
 }
