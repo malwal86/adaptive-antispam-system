@@ -107,11 +107,16 @@ class FusionIntegrationTest extends AbstractPostgresIntegrationTest {
 
         assertThat(fused.posterior()).isCloseTo(expected.posterior(), within(1e-9));
 
-        // Guard: removing the −logit(π_train) term would leave the naive combination, which
-        // is a measurably different number. π_train = ⅔ ≠ the neutral prior, so it shifts.
-        double naiveWithoutSubtraction = LogOddsFusion.sigmoid(
-                LogOddsFusion.logit(1.0 - rep.mean()) + LogOddsFusion.logit(calibratedConfidence));
-        assertThat(fused.posterior()).isNotCloseTo(naiveWithoutSubtraction, within(0.02));
+        // Guard the −logit(π_train) correction in logit space, where it is a constant
+        // shift independent of the operating point (in probability space the same shift
+        // vanishes in the saturated tail a confident verdict sits in). The pipeline's
+        // posterior logit must equal the naive sum minus a non-trivial logit(π_train);
+        // drop the subtraction and this fails, because logit(⅔) ≈ 0.69, not 0.
+        double naiveLogit =
+                LogOddsFusion.logit(1.0 - rep.mean()) + LogOddsFusion.logit(calibratedConfidence);
+        assertThat(LogOddsFusion.logit(piTrain)).isGreaterThan(0.5);
+        assertThat(fused.posteriorLogit())
+                .isCloseTo(naiveLogit - LogOddsFusion.logit(piTrain), within(1e-9));
     }
 
     private Email ingest(String fromDomain, String body) {
