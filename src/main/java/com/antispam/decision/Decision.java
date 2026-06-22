@@ -31,4 +31,15 @@ public enum Decision {
                 .max(Comparator.naturalOrder())
                 .orElseThrow(() -> new IllegalArgumentException("no decisions to merge"));
     }
+
+    /**
+     * Whether mail with this verdict is delivered to the inbox. {@link #ALLOW} and
+     * {@link #WARN} deliver — {@code warn} delivers <em>with a banner</em>, the
+     * low-false-positive-cost lever — whereas {@link #QUARANTINE} and {@link #BLOCK} do
+     * not. This is what distinguishes {@code warn} (deliver + banner) from the withholding
+     * tiers for the analyzer/console (story 04.05).
+     */
+    public boolean delivers() {
+        return this == ALLOW || this == WARN;
+    }
 }

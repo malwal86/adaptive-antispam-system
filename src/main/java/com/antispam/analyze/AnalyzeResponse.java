@@ -46,6 +46,12 @@ import java.util.UUID;
  * @param calibratedConfidence calibrated P(abuse) in {@code [0,1]}, or {@code null} on a hard-rule verdict
  * @param posterior        reputation-fused P(abuse) in {@code [0,1]}, or {@code null} when not fused
  * @param uncertaintyBand  half-width around the posterior from reputation uncertainty, or {@code null}
+ * @param delivered        whether the mail is delivered to the inbox: {@code true} for
+ *                         {@code allow} and {@code warn} (deliver + banner), {@code false}
+ *                         for {@code quarantine}/{@code block} — the deliver-vs-withhold
+ *                         signal that makes {@code warn} distinct (story 04.05)
+ * @param policyVersion    the active policy the decision was made under, or {@code null} for a
+ *                         pre-04.05 decision
  * @param decidedAt        when the decision was recorded
  * @param duplicate        true when the submitted email was already ingested
  *                         (identical bytes, or analysed by id) — no new canonical
@@ -66,6 +72,8 @@ public record AnalyzeResponse(
         Double calibratedConfidence,
         Double posterior,
         Double uncertaintyBand,
+        boolean delivered,
+        String policyVersion,
         Instant decidedAt,
         boolean duplicate) {
 
@@ -87,6 +95,8 @@ public record AnalyzeResponse(
                 scores == null ? null : scores.calibratedConfidence(),
                 fused == null ? null : fused.posterior(),
                 fused == null ? null : fused.uncertaintyBand(),
+                classification.decision().delivers(),
+                classification.policyVersion(),
                 classification.createdAt(),
                 duplicate);
     }
