@@ -28,7 +28,10 @@ import java.util.UUID;
  * hard-rule verdict short-circuits before the model runs, so they are {@code null} and
  * omitted from the JSON. {@code spamScore}/{@code phishingScore} are the raw model
  * outputs (story 04.01); {@code calibratedConfidence} is the corrected P(abuse) the
- * active calibrator produced (story 04.02) — the value the tier policy will consume.
+ * active calibrator produced (story 04.02). {@code posterior} fuses that calibrated
+ * confidence with the sender's reputation prior (story 04.04); it and {@code uncertaintyBand}
+ * are present only when the model score was fused (a calibration is installed), and
+ * {@code null} otherwise — the value the tier policy (04.05) will consume.
  *
  * @param emailId          the canonical email this verdict is about
  * @param classificationId the persisted {@code classifications} row id
@@ -41,6 +44,8 @@ import java.util.UUID;
  * @param phishingScore    raw model P(phish) in {@code [0,1]}, or {@code null} on a hard-rule verdict
  * @param modelVersion     served model identifier, or {@code null} on a hard-rule verdict
  * @param calibratedConfidence calibrated P(abuse) in {@code [0,1]}, or {@code null} on a hard-rule verdict
+ * @param posterior        reputation-fused P(abuse) in {@code [0,1]}, or {@code null} when not fused
+ * @param uncertaintyBand  half-width around the posterior from reputation uncertainty, or {@code null}
  * @param decidedAt        when the decision was recorded
  * @param duplicate        true when the submitted email was already ingested
  *                         (identical bytes, or analysed by id) — no new canonical
@@ -59,12 +64,15 @@ public record AnalyzeResponse(
         Double phishingScore,
         String modelVersion,
         Double calibratedConfidence,
+        Double posterior,
+        Double uncertaintyBand,
         Instant decidedAt,
         boolean duplicate) {
 
     /** Maps a persisted {@link Classification} to the response a card renders. */
     public static AnalyzeResponse from(Classification classification, boolean duplicate) {
         var scores = classification.scores();
+        var fused = classification.fused();
         return new AnalyzeResponse(
                 classification.emailId(),
                 classification.id(),
@@ -77,6 +85,8 @@ public record AnalyzeResponse(
                 scores == null ? null : scores.phishingScore(),
                 scores == null ? null : scores.modelVersion(),
                 scores == null ? null : scores.calibratedConfidence(),
+                fused == null ? null : fused.posterior(),
+                fused == null ? null : fused.uncertaintyBand(),
                 classification.createdAt(),
                 duplicate);
     }

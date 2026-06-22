@@ -12,8 +12,9 @@ with one trained on exported corpus + arena features; the *serving* code and the
 feature-vector contract built in 04.01 stay the same.
 
 Outputs (regenerate by running this script — see ml/README.md):
-  - src/main/resources/models/spam-classifier-bootstrap-v1.onnx   (served by Java)
-  - src/test/resources/models/parity-cases.json                   (Java↔Python parity fixture)
+  - src/main/resources/models/spam-classifier-bootstrap-v1.onnx            (served by Java)
+  - src/main/resources/models/spam-classifier-bootstrap-v1.metadata.json   (π_train for fusion, story 04.04)
+  - src/test/resources/models/parity-cases.json                            (Java↔Python parity fixture)
 
 Run:
   python -m venv .venv && .venv/bin/pip install -r ml/requirements.txt
@@ -44,6 +45,7 @@ MODEL_VERSION = "bootstrap-v1"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODEL_OUT = REPO_ROOT / "src/main/resources/models" / f"spam-classifier-{MODEL_VERSION}.onnx"
+METADATA_OUT = REPO_ROOT / "src/main/resources/models" / f"spam-classifier-{MODEL_VERSION}.metadata.json"
 PARITY_OUT = REPO_ROOT / "src/test/resources/models" / "parity-cases.json"
 
 # Fixed seed so the synthetic corpus — and therefore the trained model — is
@@ -216,6 +218,27 @@ def main() -> None:
     MODEL_OUT.parent.mkdir(parents=True, exist_ok=True)
     MODEL_OUT.write_bytes(onnx_model.SerializeToString())
     print(f"wrote {MODEL_OUT.relative_to(REPO_ROOT)} ({MODEL_OUT.stat().st_size} bytes)")
+
+    # π_train: the base rate of abuse (spam or phish) this model was trained on. Fusion
+    # subtracts logit(π_train) once so the sender prior is not double-counted (story
+    # 04.04). It is a property of the training corpus, so it travels with the artifact in
+    # a sidecar the Java side reads by model_version (see ModelMetadata.java).
+    malicious_count = int(np.count_nonzero(y != LABEL_HAM))
+    training_base_rate = malicious_count / len(y)
+    metadata = {
+        "modelVersion": MODEL_VERSION,
+        "trainingBaseRate": training_base_rate,
+        "trainingSampleCount": int(len(y)),
+        "trainingMaliciousCount": malicious_count,
+        "classLabels": ["ham", "spam", "phish"],
+        "note": (
+            "trainingBaseRate = P(spam or phish) over the training corpus — the base rate "
+            "the calibrated model already encodes, subtracted once in log-odds fusion "
+            "(story 04.04). Regenerate with ml/train_classifier.py."
+        ),
+    }
+    METADATA_OUT.write_text(json.dumps(metadata, indent=2) + "\n")
+    print(f"wrote {METADATA_OUT.relative_to(REPO_ROOT)} (π_train={training_base_rate:.4f})")
 
     print("ONNX inputs:")
     for inp in onnx_model.graph.input:

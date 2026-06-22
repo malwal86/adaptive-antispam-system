@@ -21,14 +21,16 @@ public class ClassificationRepository {
     private static final String INSERT_SQL = """
             insert into classifications (
                 id, email_id, decision, reason_codes, route_used, latency_ms,
-                spam_score, phishing_score, model_version, calibrated_confidence)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                spam_score, phishing_score, model_version, calibrated_confidence,
+                posterior, uncertainty_band)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             returning created_at
             """;
 
     private static final String SELECT_BY_EMAIL_SQL = """
             select id, email_id, decision, reason_codes, route_used, latency_ms,
-                   spam_score, phishing_score, model_version, calibrated_confidence, created_at
+                   spam_score, phishing_score, model_version, calibrated_confidence,
+                   posterior, uncertainty_band, created_at
             from classifications
             where email_id = ?
             order by created_at
@@ -42,10 +44,15 @@ public class ClassificationRepository {
     }
 
     /**
-     * Persists {@code outcome} as a decision about {@code emailId} and returns the
-     * stored {@link Classification}, including its generated id and timestamp.
+     * Persists {@code outcome} (with its optional reputation-fused {@code fused} score)
+     * as a decision about {@code emailId} and returns the stored {@link Classification},
+     * including its generated id and timestamp.
+     *
+     * @param fused the fused posterior, or {@code null} when the decision was not fused
+     *              (a hard-rule short-circuit, or a model row scored before any calibration
+     *              was installed — story 04.04)
      */
-    public Classification save(UUID emailId, DecisionOutcome outcome) {
+    public Classification save(UUID emailId, DecisionOutcome outcome, FusedScore fused) {
         UUID id = UUID.randomUUID();
         String[] codeNames = outcome.reasonCodes().stream().map(Enum::name).toArray(String[]::new);
         ModelScores scores = outcome.scores();
@@ -70,6 +77,15 @@ public class ClassificationRepository {
                 ps.setString(9, scores.modelVersion());
                 ps.setDouble(10, scores.calibratedConfidence());
             }
+            // The posterior is present only once a model-route score has been fused with
+            // reputation; otherwise (hard rule, or uncalibrated model) the row stores NULLs.
+            if (fused == null) {
+                ps.setNull(11, java.sql.Types.DOUBLE);
+                ps.setNull(12, java.sql.Types.DOUBLE);
+            } else {
+                ps.setDouble(11, fused.posterior());
+                ps.setDouble(12, fused.uncertaintyBand());
+            }
             return ps;
         }, rs -> {
             rs.next();
@@ -78,7 +94,7 @@ public class ClassificationRepository {
 
         return new Classification(
                 id, emailId, outcome.decision(), outcome.reasonCodes(),
-                outcome.route(), outcome.latencyMs(), scores, createdAt.toInstant());
+                outcome.route(), outcome.latencyMs(), scores, fused, createdAt.toInstant());
     }
 
     public List<Classification> findByEmailId(UUID emailId) {
@@ -95,6 +111,7 @@ public class ClassificationRepository {
                 RouteUsed.valueOf(rs.getString("route_used")),
                 rs.getLong("latency_ms"),
                 modelScores(rs),
+                fusedScore(rs),
                 createdAt == null ? null : createdAt.toInstant());
     };
 
@@ -111,6 +128,21 @@ public class ClassificationRepository {
         return new ModelScores(
                 rs.getDouble("spam_score"), rs.getDouble("phishing_score"), modelVersion,
                 rs.getDouble("calibrated_confidence"));
+    }
+
+    /**
+     * Reconstructs the fused posterior, or {@code null} when the row was never fused.
+     * {@code posterior} is the discriminator: it is non-null exactly when reputation was
+     * fused with a calibrated model score. The {@code posteriorLogit} is re-derived from
+     * the stored posterior rather than persisted, since the two are inverses.
+     */
+    private static FusedScore fusedScore(java.sql.ResultSet rs) throws java.sql.SQLException {
+        double posterior = rs.getDouble("posterior");
+        if (rs.wasNull()) {
+            return null;
+        }
+        return new FusedScore(
+                posterior, LogOddsFusion.logit(posterior), rs.getDouble("uncertainty_band"));
     }
 
     private static List<ReasonCode> reasonCodes(Array array) throws java.sql.SQLException {
