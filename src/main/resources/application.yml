@@ -199,6 +199,16 @@ antispam:
   eval-split:
     eval-fraction: 0.2
     seed: 42
+  # Probability calibration of the served model (story 04.02). The calibrator is fit on
+  # the split's train side and its reliability measured on the held-out eval side, so the
+  # measurement never leaks. max-ece is the gate: a model whose calibrated ECE exceeds it
+  # is rejected and never installed on the serving path — fusing an un-calibratable score
+  # with reputation (04.04) would be meaningless. bins sets the reliability-diagram
+  # resolution; min-samples-per-side refuses a run when either side is too small to trust.
+  calibration:
+    max-ece: 0.10
+    bins: 10
+    min-samples-per-side: 50
   hard-rules:
     url-denylist:
       - malware.example

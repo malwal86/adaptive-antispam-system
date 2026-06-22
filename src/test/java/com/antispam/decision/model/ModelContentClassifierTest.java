@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.antispam.decision.Decision;
 import com.antispam.decision.DecisionOutcome;
 import com.antispam.decision.RouteUsed;
+import com.antispam.decision.calibration.ActiveCalibrator;
 import com.antispam.features.EmailFeatureExtractor;
 import com.antispam.ingest.Email;
 import com.antispam.ingest.ParsedEmail;
@@ -26,12 +27,14 @@ import org.junit.jupiter.api.TestInstance;
 class ModelContentClassifierTest {
 
     private OnnxModel model;
+    private ActiveCalibrator calibrator;
     private ModelContentClassifier classifier;
 
     @BeforeAll
     void setUp() {
         model = new OnnxModel();
-        classifier = new ModelContentClassifier(new EmailFeatureExtractor(), model);
+        calibrator = new ActiveCalibrator();
+        classifier = new ModelContentClassifier(new EmailFeatureExtractor(), model, calibrator);
     }
 
     @AfterAll
@@ -57,6 +60,32 @@ class ModelContentClassifierTest {
         assertThat(outcome.scores().spamScore()).isBetween(0.0, 1.0);
         assertThat(outcome.scores().phishingScore()).isBetween(0.0, 1.0);
         assertThat(outcome.latencyMs()).isGreaterThanOrEqualTo(0L);
+    }
+
+    @Test
+    void serves_the_raw_abuse_score_as_confidence_until_a_calibration_is_installed() {
+        // The default active calibrator is the identity, so the served confidence is the
+        // raw P(abuse) = spam + phish — the model is never in an "uncalibrated" null state.
+        DecisionOutcome outcome = classifier.classify(email("Hello, lunch tomorrow?", "spf=pass"));
+
+        var scores = outcome.scores();
+        assertThat(scores.calibratedConfidence())
+                .isCloseTo(scores.rawMalicious(), org.assertj.core.data.Offset.offset(1e-9));
+    }
+
+    @Test
+    void serves_the_calibrated_confidence_once_a_calibration_is_installed() {
+        // Install a calibrator that maps every raw score to a fixed 0.42; the served
+        // confidence must be that calibrated value, not the raw model output (AC 2).
+        calibrator.install(raw -> 0.42);
+        try {
+            DecisionOutcome outcome = classifier.classify(email("Hello, lunch tomorrow?", "spf=pass"));
+            assertThat(outcome.scores().calibratedConfidence()).isEqualTo(0.42);
+            // The raw scores are untouched — calibration corrects the confidence, not them.
+            assertThat(outcome.scores().spamScore()).isBetween(0.0, 1.0);
+        } finally {
+            calibrator.install(raw -> raw);
+        }
     }
 
     @Test

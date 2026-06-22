@@ -21,14 +21,14 @@ public class ClassificationRepository {
     private static final String INSERT_SQL = """
             insert into classifications (
                 id, email_id, decision, reason_codes, route_used, latency_ms,
-                spam_score, phishing_score, model_version)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                spam_score, phishing_score, model_version, calibrated_confidence)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             returning created_at
             """;
 
     private static final String SELECT_BY_EMAIL_SQL = """
             select id, email_id, decision, reason_codes, route_used, latency_ms,
-                   spam_score, phishing_score, model_version, created_at
+                   spam_score, phishing_score, model_version, calibrated_confidence, created_at
             from classifications
             where email_id = ?
             order by created_at
@@ -63,10 +63,12 @@ public class ClassificationRepository {
                 ps.setNull(7, java.sql.Types.DOUBLE);
                 ps.setNull(8, java.sql.Types.DOUBLE);
                 ps.setNull(9, java.sql.Types.VARCHAR);
+                ps.setNull(10, java.sql.Types.DOUBLE);
             } else {
                 ps.setDouble(7, scores.spamScore());
                 ps.setDouble(8, scores.phishingScore());
                 ps.setString(9, scores.modelVersion());
+                ps.setDouble(10, scores.calibratedConfidence());
             }
             return ps;
         }, rs -> {
@@ -107,7 +109,8 @@ public class ClassificationRepository {
             return null;
         }
         return new ModelScores(
-                rs.getDouble("spam_score"), rs.getDouble("phishing_score"), modelVersion);
+                rs.getDouble("spam_score"), rs.getDouble("phishing_score"), modelVersion,
+                rs.getDouble("calibrated_confidence"));
     }
 
     private static List<ReasonCode> reasonCodes(Array array) throws java.sql.SQLException {

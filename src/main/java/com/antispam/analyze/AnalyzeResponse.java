@@ -23,11 +23,12 @@ import java.util.UUID;
  * {@code reason_codes}/{@code route_used} are illustrative of the fields, not the
  * casing.
  *
- * <p>The model scores ({@code spamScore}, {@code phishingScore}, {@code modelVersion})
- * are present only on a {@code model}-route verdict (story 04.01); a hard-rule verdict
- * short-circuits before the model runs, so they are {@code null} and omitted from the
- * JSON. They are the raw model outputs — the calibrated confidence and tier policy
- * that consume them arrive in later stories.
+ * <p>The model scores ({@code spamScore}, {@code phishingScore}, {@code modelVersion},
+ * {@code calibratedConfidence}) are present only on a {@code model}-route verdict; a
+ * hard-rule verdict short-circuits before the model runs, so they are {@code null} and
+ * omitted from the JSON. {@code spamScore}/{@code phishingScore} are the raw model
+ * outputs (story 04.01); {@code calibratedConfidence} is the corrected P(abuse) the
+ * active calibrator produced (story 04.02) — the value the tier policy will consume.
  *
  * @param emailId          the canonical email this verdict is about
  * @param classificationId the persisted {@code classifications} row id
@@ -39,6 +40,7 @@ import java.util.UUID;
  * @param spamScore        raw model P(spam) in {@code [0,1]}, or {@code null} on a hard-rule verdict
  * @param phishingScore    raw model P(phish) in {@code [0,1]}, or {@code null} on a hard-rule verdict
  * @param modelVersion     served model identifier, or {@code null} on a hard-rule verdict
+ * @param calibratedConfidence calibrated P(abuse) in {@code [0,1]}, or {@code null} on a hard-rule verdict
  * @param decidedAt        when the decision was recorded
  * @param duplicate        true when the submitted email was already ingested
  *                         (identical bytes, or analysed by id) — no new canonical
@@ -56,6 +58,7 @@ public record AnalyzeResponse(
         Double spamScore,
         Double phishingScore,
         String modelVersion,
+        Double calibratedConfidence,
         Instant decidedAt,
         boolean duplicate) {
 
@@ -73,6 +76,7 @@ public record AnalyzeResponse(
                 scores == null ? null : scores.spamScore(),
                 scores == null ? null : scores.phishingScore(),
                 scores == null ? null : scores.modelVersion(),
+                scores == null ? null : scores.calibratedConfidence(),
                 classification.createdAt(),
                 duplicate);
     }

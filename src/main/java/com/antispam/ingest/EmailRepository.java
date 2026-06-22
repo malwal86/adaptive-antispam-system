@@ -3,7 +3,9 @@ package com.antispam.ingest;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +36,13 @@ public class EmailRepository {
                    recipients, subject, received_at, auth_results,
                    ingest_source, ingested_at
             from emails where id = ?
+            """;
+
+    private static final String SELECT_BY_IDS_SQL = """
+            select id, content_hash, raw_content, sender, sender_domain,
+                   recipients, subject, received_at, auth_results,
+                   ingest_source, ingested_at
+            from emails where id = any(?)
             """;
 
     private static final String SELECT_ID_BY_HASH_SQL =
@@ -76,6 +85,23 @@ public class EmailRepository {
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Loads every email whose id is in {@code ids} in a single query — the batch read
+     * calibration needs to score a whole split side without N+1 round-trips (story
+     * 04.02). Ids with no matching row are simply absent from the result; order is
+     * unspecified, so callers key by {@link Email#id()}.
+     */
+    public List<Email> findByIds(Collection<UUID> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query(connection -> {
+            var ps = connection.prepareStatement(SELECT_BY_IDS_SQL);
+            ps.setArray(1, connection.createArrayOf("uuid", ids.toArray()));
+            return ps;
+        }, EMAIL_MAPPER);
     }
 
     private UUID findIdByHash(byte[] contentHash) {
