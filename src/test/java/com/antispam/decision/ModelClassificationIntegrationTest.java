@@ -39,9 +39,13 @@ class ModelClassificationIntegrationTest extends AbstractPostgresIntegrationTest
 
     @Test
     void model_route_records_scores_and_model_version_on_the_decision_row() {
+        // Content is unique to this test: classifications are append-only and ingest
+        // is content-hash idempotent, so reusing another test's exact bytes against
+        // the shared container would leave two rows for one email and break the
+        // single-row assertions below.
         Email email = ingest("""
                 From: newsletter@good.example
-                Subject: WIN A FREE PRIZE NOW!!!
+                Subject: WIN A FREE PRIZE NOW!!! [model-it-1]
                 Authentication-Results: mx.test; spf=none; dkim=fail
 
                 CLICK HERE to claim your reward at http://192.168.10.10/claim
@@ -69,11 +73,13 @@ class ModelClassificationIntegrationTest extends AbstractPostgresIntegrationTest
 
     @Test
     void hard_rule_route_stores_no_model_scores() {
+        // Unique bytes (see the note above) that still trip the KNOWN_BAD_URL rule
+        // on the denylisted host malware.example.
         Email email = ingest("""
                 From: deals@promo.example
-                Subject: Act now
+                Subject: Act now [model-it-2]
 
-                Verify your prize at http://malware.example/login today.
+                Claim your reward at http://malware.example/welcome right away.
                 """);
 
         Classification decision = decisionService.decide(email);
