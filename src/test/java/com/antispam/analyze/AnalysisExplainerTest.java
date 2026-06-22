@@ -48,12 +48,14 @@ class AnalysisExplainerTest {
     }
 
     @Test
-    void plain_allow_reads_as_a_placeholder_not_a_clean_verdict() {
+    void plain_allow_reads_as_provisional_pending_the_tier_policy() {
         String explanation = AnalysisExplainer.explain(Decision.ALLOW, List.of());
 
+        // The model scores the email but the tier policy (04.04/04.05) isn't live,
+        // so a no-reason allow must read as provisional, not a confident verdict.
         assertThat(explanation)
+                .contains("the model scored it")
                 .contains("provisionally allowed")
-                .contains("placeholder model")
                 .doesNotContain("Blocked");
     }
 }

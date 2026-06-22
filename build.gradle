@@ -45,6 +45,12 @@ dependencies {
     // with the starter; the cache degrades to Postgres when Redis is unavailable.
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // In-process model serving (story 04.01): a classifier trained in Python and
+    // exported to ONNX is scored via ONNX Runtime inside the Spring process — no
+    // model-server hop on the synchronous <100ms decision path. The artifact bundles
+    // native libraries for linux-x64 (Render) and macOS arm64 (local dev).
+    implementation 'com.microsoft.onnxruntime:onnxruntime:1.26.0'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     // Real Postgres in integration tests so the immutability trigger and
     // ON CONFLICT idempotency are exercised against the actual database.
