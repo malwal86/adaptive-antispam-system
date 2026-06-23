@@ -14,6 +14,8 @@ import com.antispam.ingest.IngestService;
 import com.antispam.retrain.RetrainLabel;
 import com.antispam.retrain.RetrainLabelRepository;
 import com.antispam.seed.GroundTruthLabel;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,6 +50,8 @@ class FeedbackGateIntegrationTest extends AbstractPostgresIntegrationTest {
     private FeedbackGateService gate;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Test
     void a_single_malicious_report_moves_neither_reputation_nor_a_label() {
@@ -111,11 +115,14 @@ class FeedbackGateIntegrationTest extends AbstractPostgresIntegrationTest {
             assertThat(label.label()).isEqualTo(GroundTruthLabel.SPAM);
             assertThat(label.source()).isEqualTo("feedback");
             assertThat(label.weight()).isCloseTo(0.8, org.assertj.core.api.Assertions.within(1e-9));
-            // Provenance records the corroboration and the per-item trust/confidence (AC 5).
-            assertThat(label.provenance())
-                    .contains("\"corroborators\":4")
-                    .contains("\"trust\":1.0")
-                    .contains("\"confidence\":0.8");
+            // Provenance records the corroboration and the per-item trust/confidence (AC 5). Parse
+            // it rather than substring-match: Postgres JSONB reserializes with its own spacing and
+            // does not preserve key order, so only the values are contractual, not the text.
+            JsonNode provenance = readJson(label.provenance());
+            assertThat(provenance.get("corroborators").asInt()).isEqualTo(4);
+            assertThat(provenance.get("trust").asDouble()).isEqualTo(1.0);
+            assertThat(provenance.get("confidence").asDouble()).isEqualTo(0.8);
+            assertThat(provenance.get("signal").asText()).isEqualTo("BAD");
         }
     }
 
@@ -198,6 +205,15 @@ class FeedbackGateIntegrationTest extends AbstractPostgresIntegrationTest {
     private FeedbackEvent report(UUID runId, UUID emailId, Persona persona, GroundTruthLabel truth) {
         return new FeedbackEvent(UUID.randomUUID(), emailId, persona.id(), runId,
                 FeedbackAction.REPORT, 0.8, 10L, Decision.ALLOW, truth, persona.name());
+    }
+
+    /** Parses a stored provenance JSON string, failing the test on malformed JSON. */
+    private JsonNode readJson(String json) {
+        try {
+            return objectMapper.readTree(json);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new AssertionError("provenance is not valid JSON: " + json, e);
+        }
     }
 
     /** Count of feedback-sourced reputation events for a sender — the gate's reputation footprint. */
