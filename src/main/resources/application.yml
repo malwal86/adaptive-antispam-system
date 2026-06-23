@@ -228,6 +228,26 @@ antispam:
     cost:
       input-per-1k-tokens: 0.00015
       output-per-1k-tokens: 0.00060
+    # Rolling budget cap (story 05.04). LLM spend is tracked in atomic Redis counters — one per
+    # UTC day, one per UTC month — and every call reserves against both before it runs, so a
+    # bad/adversarial day can't burn the month and cost is bounded by design (PRD §Cost). Off by
+    # default: local dev and the full-context tests wire the no-op UnboundedLlmBudget, so no call
+    # dials Redis to check a budget. The hosted deploy sets ANTISPAM_LLM_BUDGET_ENABLED=true with
+    # APP_REDIS_URL (and, on a real Redis outage, the gate fails CLOSED — denying calls — since
+    # there is no second source of truth for spend). Caps and the per-call reservation are tunable
+    # here without a redeploy; the reservation is a conservative upper bound on one call (incl. its
+    # retry), charged up front and trued up to the real cost afterwards.
+    budget:
+      enabled: ${ANTISPAM_LLM_BUDGET_ENABLED:false}
+      daily-cap-usd: ${ANTISPAM_LLM_BUDGET_DAILY_USD:0.50}
+      monthly-cap-usd: ${ANTISPAM_LLM_BUDGET_MONTHLY_USD:5.00}
+      per-call-reservation-usd: ${ANTISPAM_LLM_BUDGET_RESERVATION_USD:0.01}
+    # Quarantine-pending SLA (story 05.06). When the LLM is enabled, uncertain mail is withheld
+    # (quarantine-pending) synchronously and resolved asynchronously within this deadline —
+    # promote-to-inbox, confirm-spam, or fail-degrade past it (PRD §Live timing: ~30s SLA). With
+    # the LLM disabled there is no async path, so this is unused. Tunable without a redeploy.
+    quarantine:
+      sla: ${ANTISPAM_LLM_SLA:30s}
   seed:
     enabled: false
     corpus-dir: seed-corpus

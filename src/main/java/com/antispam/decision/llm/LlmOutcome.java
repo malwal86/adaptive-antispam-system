@@ -16,8 +16,9 @@ import java.math.BigDecimal;
  * @param verdict   the validated verdict, or {@code null} when degraded (see {@link #degraded()})
  * @param latencyMs total wall-clock milliseconds spent across all attempts (≥ 0)
  * @param costUsd   accumulated cost across all attempts (≥ 0; never null)
- * @param attempts  how many provider calls were made (1 on a clean call or an immediate
- *                  unavailability; 2 when the first response failed the schema)
+ * @param attempts  how many provider calls were made: 0 when none was made (the budget cap denied
+ *                  it, story 05.04); 1 on a clean call or an immediate unavailability; 2 when the
+ *                  first response failed the schema
  */
 public record LlmOutcome(LlmVerdict verdict, long latencyMs, BigDecimal costUsd, int attempts) {
 
@@ -28,8 +29,8 @@ public record LlmOutcome(LlmVerdict verdict, long latencyMs, BigDecimal costUsd,
         if (costUsd == null || costUsd.signum() < 0) {
             throw new IllegalArgumentException("costUsd must be non-null and non-negative");
         }
-        if (attempts < 1) {
-            throw new IllegalArgumentException("attempts must be at least 1");
+        if (attempts < 0) {
+            throw new IllegalArgumentException("attempts cannot be negative");
         }
     }
 
@@ -44,6 +45,14 @@ public record LlmOutcome(LlmVerdict verdict, long latencyMs, BigDecimal costUsd,
     /** A degraded outcome: no verdict, but the latency and cost already incurred are still recorded. */
     public static LlmOutcome degraded(long latencyMs, BigDecimal costUsd, int attempts) {
         return new LlmOutcome(null, latencyMs, costUsd, attempts);
+    }
+
+    /**
+     * A degraded outcome where no provider call was made at all (story 05.04): the budget cap denied
+     * the call, or the budget store itself was unreachable. No verdict, zero cost, zero attempts.
+     */
+    public static LlmOutcome notAttempted() {
+        return new LlmOutcome(null, 0L, BigDecimal.ZERO, 0);
     }
 
     /** Whether the call failed to produce a validated verdict and the decision must fail-degrade. */
