@@ -46,6 +46,13 @@ public class PolicyRepository {
             where version = ?
             """;
 
+    private static final String SELECT_SHADOW_SQL = """
+            select version, active, warn_threshold, quarantine_threshold, block_threshold,
+                   llm_threshold, routing_band_width, burst_threshold, model_version, created_at
+            from policies
+            where shadow
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Autowired
@@ -64,6 +71,37 @@ public class PolicyRepository {
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * The policy designated as the shadow (logged-only) regime for live shadow scoring (story
+     * 09.02), or empty when none is configured — in which case shadow scoring is a no-op and the
+     * live path is wholly unaffected. At most one row is ever flagged shadow (partial unique index).
+     */
+    public Optional<Policy> findShadow() {
+        return jdbc.query(SELECT_SHADOW_SQL, POLICY_MAPPER).stream().findFirst();
+    }
+
+    /**
+     * Designates {@code version} as the sole shadow policy: clears the current shadow flag, then
+     * sets it on {@code version}, atomically — mirroring {@link #activate}. The shadow may equal the
+     * active policy (a degenerate no-diff configuration), so this does not check against active.
+     *
+     * @throws IllegalArgumentException if no policy has that version
+     */
+    @Transactional
+    public void markShadow(String version) {
+        jdbc.update("update policies set shadow = false where shadow");
+        int updated = jdbc.update("update policies set shadow = true where version = ?", version);
+        if (updated == 0) {
+            throw new IllegalArgumentException("no policy to mark shadow with version " + version);
+        }
+    }
+
+    /** Clears the shadow designation, turning live shadow scoring off. A no-op when none is set. */
+    @Transactional
+    public void clearShadow() {
+        jdbc.update("update policies set shadow = false where shadow");
     }
 
     /**
