@@ -230,6 +230,12 @@ antispam:
     enabled: ${ANTISPAM_BURST_ENABLED:false}
     window: ${ANTISPAM_BURST_WINDOW:60s}
     escalate-to: ${ANTISPAM_BURST_ESCALATE_TO:QUARANTINE}
+    # SimHash near-duplicate radius (story 06.02): the cheap surface tier that catches templated
+    # blasts spread across senders. Two content fingerprints within this many bits are near-dups;
+    # a cluster of them exceeding burst_threshold escalates (reworded variants that defeat this are
+    # the offline embedding tier's job, 06.03). 6 separates trivial template variation (~few bits)
+    # from unrelated mail (~32 bits). Tunable here without a redeploy.
+    near-dup-hamming-threshold: ${ANTISPAM_BURST_NEAR_DUP_HAMMING:6}
   # LLM fallback (story 05.02). The uncertain ~5% the router escalates (05.01) is sent to
   # Spring AI's ChatClient for a strictly-typed verdict. Off by default so local dev and
   # the full-context tests never reach a provider — a routed decision then fail-degrades on

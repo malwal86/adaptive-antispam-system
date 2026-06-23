@@ -17,33 +17,44 @@ import org.junit.jupiter.api.Test;
 class BurstPropertiesTest {
 
     @Test
-    void accepts_a_positive_window_and_a_severe_escalation_tier_when_enabled() {
+    void accepts_a_positive_window_severe_tier_and_valid_radius_when_enabled() {
         BurstProperties props =
-                new BurstProperties(true, Duration.ofSeconds(60), Decision.QUARANTINE);
+                new BurstProperties(true, Duration.ofSeconds(60), Decision.QUARANTINE, 6);
 
         assertThat(props.window()).isEqualTo(Duration.ofSeconds(60));
         assertThat(props.escalateTo()).isEqualTo(Decision.QUARANTINE);
+        assertThat(props.nearDupHammingThreshold()).isEqualTo(6);
     }
 
     @Test
     void rejects_a_non_positive_window_when_enabled() {
-        assertThatThrownBy(() -> new BurstProperties(true, Duration.ZERO, Decision.QUARANTINE))
+        assertThatThrownBy(() -> new BurstProperties(true, Duration.ZERO, Decision.QUARANTINE, 6))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new BurstProperties(true, null, Decision.QUARANTINE))
+        assertThatThrownBy(() -> new BurstProperties(true, null, Decision.QUARANTINE, 6))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejects_an_escalation_to_allow_which_could_never_change_a_tier_when_enabled() {
-        assertThatThrownBy(() -> new BurstProperties(true, Duration.ofSeconds(60), Decision.ALLOW))
+        assertThatThrownBy(() -> new BurstProperties(true, Duration.ofSeconds(60), Decision.ALLOW, 6))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejects_a_near_dup_radius_outside_the_bit_distance_range_when_enabled() {
+        assertThatThrownBy(
+                () -> new BurstProperties(true, Duration.ofSeconds(60), Decision.QUARANTINE, -1))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                () -> new BurstProperties(true, Duration.ofSeconds(60), Decision.QUARANTINE, 65))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void does_not_validate_the_knobs_when_disabled() {
-        // Disabled: NoBurstOverride is wired and the window/tier are never read, so even nonsense
+        // Disabled: NoBurstOverride is wired and the knobs are never read, so even nonsense
         // values must not stop the context from starting.
-        assertThatCode(() -> new BurstProperties(false, null, null))
+        assertThatCode(() -> new BurstProperties(false, null, null, -1))
                 .doesNotThrowAnyException();
     }
 }

@@ -23,10 +23,15 @@ import org.springframework.validation.annotation.Validated;
  *                   posterior-derived tier), so a blast is escalated to at least this tier regardless
  *                   of posterior. Must be more severe than {@link Decision#ALLOW}, else it could
  *                   never change a tier
+ * @param nearDupHammingThreshold the SimHash Hamming radius within which two content fingerprints
+ *                   count as near-duplicates (story 06.02): a bit-distance in {@code [0,64]}, smaller
+ *                   is stricter. Trivially-varied templates land a few bits apart and unrelated mail
+ *                   ~32, so a small radius (default 6) separates them
  */
 @Validated
 @ConfigurationProperties(prefix = "antispam.burst")
-public record BurstProperties(boolean enabled, Duration window, Decision escalateTo) {
+public record BurstProperties(
+        boolean enabled, Duration window, Decision escalateTo, int nearDupHammingThreshold) {
 
     public BurstProperties {
         if (enabled) {
@@ -38,6 +43,11 @@ public record BurstProperties(boolean enabled, Duration window, Decision escalat
                 throw new IllegalArgumentException(
                         "antispam.burst.escalate-to must be a tier more severe than ALLOW but was "
                                 + escalateTo);
+            }
+            if (nearDupHammingThreshold < 0 || nearDupHammingThreshold > 64) {
+                throw new IllegalArgumentException(
+                        "antispam.burst.near-dup-hamming-threshold must be a bit-distance in [0,64] "
+                                + "but was " + nearDupHammingThreshold);
             }
         }
     }
