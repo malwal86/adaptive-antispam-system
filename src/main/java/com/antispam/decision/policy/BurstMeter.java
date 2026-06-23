@@ -19,7 +19,10 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "antispam.burst.enabled", havingValue = "true")
 public class BurstMeter {
 
-    /** Counter name; tagged {@code escalated-to=<tier>} — one increment per burst escalation. */
+    /**
+     * Counter name; tagged {@code escalated-to=<tier>} and {@code trigger=<BurstTrigger>} — one
+     * increment per burst escalation, attributable to sender velocity vs. content near-duplication.
+     */
     static final String BURST_COUNTER = "antispam.burst.detected";
 
     private final MeterRegistry meters;
@@ -29,8 +32,9 @@ public class BurstMeter {
         this.meters = meters;
     }
 
-    /** Records one burst escalation to {@code escalatedTo}. */
-    public void recordBurst(Decision escalatedTo) {
-        meters.counter(BURST_COUNTER, "escalated-to", escalatedTo.name()).increment();
+    /** Records one burst escalation to {@code escalatedTo}, attributed to the {@code trigger}. */
+    public void recordBurst(Decision escalatedTo, BurstTrigger trigger) {
+        meters.counter(BURST_COUNTER, "escalated-to", escalatedTo.name(), "trigger", trigger.name())
+                .increment();
     }
 }
