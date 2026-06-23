@@ -188,6 +188,20 @@ app:
     reputation-consumer:
       group-id: reputation-accrual
       concurrency: 6
+    # Replay topic (story 09.01): the immutable corpus is re-published here for experiments,
+    # distinct from emails.raw so a replay is isolated from live processing — its own topic and
+    # its own consumer group, with no effect on live consumer-group lag or decisions. Partitions
+    # mirror emails.raw so a sender's replayed mail shards the same way; retention is short (the
+    # durable results live in replay_decisions, the topic is just transport). Replication follows
+    # the same single-broker override as emails.raw.
+    replay-topic:
+      name: emails.replay
+      partitions: 6
+      replication-factor: ${APP_KAFKA_REPLICATION_FACTOR:3}
+      retention: 1d
+    replay-consumer:
+      group-id: replay-experimental
+      concurrency: 6
 
 antispam:
   # The analyzer/console (story 01.05, Epic 12) is a separate Next.js service that
