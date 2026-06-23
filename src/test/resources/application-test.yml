@@ -43,6 +43,10 @@ app:
       concurrency: 1
     reputation-consumer:
       concurrency: 1
+    # The replay consumer (story 09.01) is capped at one thread for the same reason as the others:
+    # the single-broker Testcontainers cluster on a constrained CI runner is easily overloaded.
+    replay-consumer:
+      concurrency: 1
 
 # Hard-rule fixtures pinned for the integration tests, so they don't ride on the
 # editable demo defaults in the main application.yml.

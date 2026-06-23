@@ -48,6 +48,12 @@ public class EmailRepository {
     private static final String SELECT_ID_BY_HASH_SQL =
             "select id from emails where content_hash = ?";
 
+    private static final String SELECT_ALL_IDENTITIES_SQL = """
+            select id, sender, sender_domain
+            from emails
+            order by ingested_at, id
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Autowired
@@ -103,6 +109,29 @@ public class EmailRepository {
             return ps;
         }, EMAIL_MAPPER);
     }
+
+    /**
+     * The identity of every email in the corpus — id plus the sender fields needed to derive the
+     * Kafka partition key — in a stable order ({@code ingested_at}, then {@code id}). Used by replay
+     * (story 09.01) to re-publish the immutable corpus to {@code emails.replay} without loading the
+     * raw bodies: a replay event carries identity and routing only, and the body is loaded by
+     * {@code emailId} at scoring time. The deterministic ordering makes a replay's publish sequence
+     * reproducible across runs.
+     */
+    public List<EmailIdentity> findAllIdentities() {
+        return jdbc.query(SELECT_ALL_IDENTITIES_SQL, IDENTITY_MAPPER);
+    }
+
+    /**
+     * A corpus email's routing identity: its id and the sender fields from which the spine's
+     * partition key is derived. Deliberately omits the raw bytes — replay does not need them to
+     * publish (story 09.01).
+     */
+    public record EmailIdentity(UUID id, String sender, String senderDomain) {
+    }
+
+    private static final RowMapper<EmailIdentity> IDENTITY_MAPPER = (rs, rowNum) -> new EmailIdentity(
+            rs.getObject("id", UUID.class), rs.getString("sender"), rs.getString("sender_domain"));
 
     private UUID findIdByHash(byte[] contentHash) {
         return jdbc.queryForObject(SELECT_ID_BY_HASH_SQL, UUID.class, contentHash);

@@ -128,8 +128,12 @@ public class PolicyDecisionService {
      * Whether {@code outcome} can be escalated to the LLM: only a fused model decision is. A
      * hard-rule verdict is authoritative and skipped the model, so it never escalates; an unfused
      * model row (no calibration installed) has no posterior for the predicates to judge.
+     *
+     * <p>Package-private (not private) because {@link PolicyScorer} reuses the same eligibility
+     * rule to score an arbitrary policy off the live path — the routing predicate must be applied
+     * identically whether the policy is the active one or an experimental one.
      */
-    private static boolean eligibleForRouting(DecisionOutcome outcome, FusedScore fused) {
+    static boolean eligibleForRouting(DecisionOutcome outcome, FusedScore fused) {
         return outcome.route() == RouteUsed.MODEL && fused != null;
     }
 
@@ -142,14 +146,18 @@ public class PolicyDecisionService {
     }
 
     /**
-     * The tier before any override: a hard-rule verdict as decided, a fused model score
-     * mapped through the policy thresholds, or — when the model score was not fused — the
-     * model route's provisional verdict left as-is.
+     * The tier {@code policy} assigns before any override: a hard-rule verdict as decided, a fused
+     * model score mapped through the policy thresholds, or — when the model score was not fused —
+     * the model route's provisional verdict left as-is.
+     *
+     * <p>Package-private (not private) because {@link PolicyScorer} reuses it verbatim to tier an
+     * arbitrary policy off the live path; the passthrough-vs-tier rule is shared knowledge that
+     * must stay identical between the enforced decision and an experimental score.
      */
-    private static Decision baseTier(Policy active, DecisionOutcome outcome, FusedScore fused) {
+    static Decision baseTier(Policy policy, DecisionOutcome outcome, FusedScore fused) {
         if (outcome.route() == RouteUsed.HARD_RULE || fused == null) {
             return outcome.decision();
         }
-        return active.tierFor(fused.posterior());
+        return policy.tierFor(fused.posterior());
     }
 }

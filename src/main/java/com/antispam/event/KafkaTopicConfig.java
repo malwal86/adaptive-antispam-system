@@ -33,4 +33,20 @@ public class KafkaTopicConfig {
                 .config(TopicConfig.RETENTION_MS_CONFIG, Long.toString(raw.retention().toMillis()))
                 .build();
     }
+
+    /**
+     * The {@code emails.replay} topic (story 09.01): a topic distinct from {@code emails.raw} so a
+     * replay is isolated from live processing — its own partitions and its own consumer group.
+     * Declared here for the same reason as {@code emails.raw}: managed brokers commonly disable
+     * auto-creation, so the topology must be provisioned explicitly.
+     */
+    @Bean
+    public NewTopic emailsReplayTopic(KafkaTopicProperties properties) {
+        KafkaTopicProperties.ReplayTopic replay = properties.replayTopic();
+        return TopicBuilder.name(replay.name())
+                .partitions(replay.partitions())
+                .replicas(replay.replicationFactor())
+                .config(TopicConfig.RETENTION_MS_CONFIG, Long.toString(replay.retention().toMillis()))
+                .build();
+    }
 }
