@@ -26,8 +26,14 @@ import org.springframework.stereotype.Component;
  *       distribution is proper whatever the biases are.</li>
  * </ul>
  *
- * <p>This is the good-faith, truth-conditioned baseline; the malicious channel attacks
- * (report/rescue bombers that act <em>against</em> ground truth) are layered on in story 07.04.
+ * <p><b>Malicious personas attack against ground truth</b> (story 07.04). A good-faith user's
+ * REPORT and RESCUE track the truth — they mostly report real spam and rescue wrongly-withheld ham.
+ * A {@link Persona#malicious() malicious} persona inverts that conditioning: a <em>report bomber</em>
+ * preferentially reports <em>delivered ham</em> (to drive a legitimate sender's reputation down) and
+ * a <em>rescue bomber</em> preferentially rescues <em>withheld spam</em> (to whitewash a campaign).
+ * Same biases, opposite truth-conditioning — so the attack is "report/rescue regardless of, and
+ * targeting, the truth". The weighting/corroboration gate (07.03) is what blunts it; the sensitivity
+ * sweep (07.04) measures how far it holds.
  */
 @Component
 public class ActionSampler {
@@ -61,12 +67,18 @@ public class ActionSampler {
 
     private static double[] weights(List<FeedbackAction> space, GroundTruthLabel truth, Persona persona) {
         boolean bad = truth != GroundTruthLabel.HAM; // SPAM or PHISH
+        boolean malicious = persona.malicious();
+        // A good-faith user reports mail that really is bad and rescues mail that really is good; a
+        // bomber inverts this, attacking the opposite class (report ham / rescue spam). The factor
+        // is the only thing the malicious flag flips — the biases themselves are unchanged.
+        double reportTruthFactor = malicious ? (bad ? 0.1 : 0.9) : (bad ? 0.9 : 0.1);
+        double rescueTruthFactor = malicious ? (bad ? 0.9 : 0.1) : (bad ? 0.1 : 0.8);
         double[] weights = new double[space.size()];
         for (int i = 0; i < space.size(); i++) {
             weights[i] = switch (space.get(i)) {
-                case REPORT -> persona.reportBias() * (bad ? 0.9 : 0.1);
+                case REPORT -> persona.reportBias() * reportTruthFactor;
                 case CLICK -> persona.clickBias() * (bad ? persona.riskTolerance() : 0.7);
-                case RESCUE -> (bad ? 0.1 : 0.8) * (0.3 + 0.7 * persona.riskTolerance());
+                case RESCUE -> rescueTruthFactor * (0.3 + 0.7 * persona.riskTolerance());
                 case IGNORE -> 0.0; // assigned the residual mass below
             };
         }
