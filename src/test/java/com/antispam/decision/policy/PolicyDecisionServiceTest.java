@@ -104,7 +104,7 @@ class PolicyDecisionServiceTest {
     @Test
     void burst_override_escalates_beyond_the_posterior_tier_and_records_the_reason() {
         when(policies.findActive()).thenReturn(Optional.of(LENIENT));
-        BurstOverride burst = e -> Optional.of(
+        BurstOverride burst = (e, p) -> Optional.of(
                 new BurstOverride.Escalation(Decision.QUARANTINE, ReasonCode.BURST_OVERRIDE));
 
         // Posterior 0.10 maps to ALLOW, but the burst override forces at least QUARANTINE.
@@ -117,7 +117,7 @@ class PolicyDecisionServiceTest {
     @Test
     void burst_override_never_lowers_an_already_more_severe_tier() {
         when(policies.findActive()).thenReturn(Optional.of(LENIENT));
-        BurstOverride burst = e -> Optional.of(
+        BurstOverride burst = (e, p) -> Optional.of(
                 new BurstOverride.Escalation(Decision.WARN, ReasonCode.BURST_OVERRIDE));
 
         // Posterior 0.99 already maps to BLOCK; a weaker escalation must not soften it,
@@ -214,10 +214,11 @@ class PolicyDecisionServiceTest {
     }
 
     private static BurstOverride noBurst() {
-        return e -> Optional.empty();
+        return (e, p) -> Optional.empty();
     }
 
     private static Policy policy(String version, double warn, double quarantine, double block) {
-        return new Policy(version, true, warn, quarantine, block, 0.40, 0.05, "bootstrap-v1", Instant.EPOCH);
+        return new Policy(
+                version, true, warn, quarantine, block, 0.40, 0.05, 20, "bootstrap-v1", Instant.EPOCH);
     }
 }

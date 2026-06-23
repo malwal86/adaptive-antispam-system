@@ -11,11 +11,11 @@ import java.util.Optional;
  * mail is invisible to a per-message score but obvious in aggregate; this hook lets that
  * aggregate signal override the score-derived tier.
  *
- * <p><b>Stubbed here, filled in Epic 06.</b> Story 04.05 defines the seam and wires the
- * pipeline to honour it; the only implementation for now is {@link NoBurstOverride}, which
- * never escalates, so the tier comes purely from the policy thresholds. Story 06.01
- * replaces the bean with the real near-duplicate / burst detector — no pipeline change
- * needed, because the contract already exists.
+ * <p><b>Implemented in Epic 06.</b> Story 04.05 defined the seam and wired the pipeline to
+ * honour it; story 06.01 fills it with the Redis sliding-window detector ({@link RedisBurstOverride}),
+ * selected when {@code antispam.burst.enabled=true}. When burst detection is switched off
+ * {@link NoBurstOverride} is wired instead and never escalates, so the tier comes purely from the
+ * policy thresholds — no pipeline change either way, because the contract already exists.
  */
 public interface BurstOverride {
 
@@ -32,9 +32,13 @@ public interface BurstOverride {
     }
 
     /**
-     * Whether {@code email} belongs to a burst that warrants escalation.
+     * Whether {@code email} belongs to a burst that warrants escalation under {@code policy}.
      *
+     * @param email  the email being decided
+     * @param policy the active decision regime, whose {@link Policy#burstThreshold()} the detector
+     *               compares the sender's windowed velocity against — so the trigger is tunable per
+     *               regime without a second policy lookup
      * @return the escalation to apply, or {@link Optional#empty()} when no burst is detected
      */
-    Optional<Escalation> evaluate(Email email);
+    Optional<Escalation> evaluate(Email email, Policy policy);
 }

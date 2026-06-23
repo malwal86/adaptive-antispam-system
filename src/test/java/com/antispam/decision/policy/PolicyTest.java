@@ -56,7 +56,17 @@ class PolicyTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void rejects_a_non_positive_burst_threshold() {
+        // The burst threshold is a count, not a probability: it must be at least 1, or the detector
+        // would fire on every message (a count is always > 0 after recording one).
+        assertThatThrownBy(() -> new Policy(
+                "test-v1", true, 0.50, 0.80, 0.95, 0.40, 0.05, 0, "bootstrap-v1", Instant.EPOCH))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static Policy policy(double warn, double quarantine, double block) {
-        return new Policy("test-v1", true, warn, quarantine, block, 0.40, 0.05, "bootstrap-v1", Instant.EPOCH);
+        return new Policy(
+                "test-v1", true, warn, quarantine, block, 0.40, 0.05, 20, "bootstrap-v1", Instant.EPOCH);
     }
 }
