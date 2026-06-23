@@ -1,6 +1,7 @@
 package com.antispam.decision.policy;
 
 import com.antispam.decision.Decision;
+import com.antispam.decision.Probabilities;
 import java.time.Instant;
 
 /**
@@ -50,11 +51,11 @@ public record Policy(
         Instant createdAt) {
 
     public Policy {
-        requireUnit("warnThreshold", warnThreshold);
-        requireUnit("quarantineThreshold", quarantineThreshold);
-        requireUnit("blockThreshold", blockThreshold);
-        requireUnit("llmThreshold", llmThreshold);
-        requireUnit("routingBandWidth", routingBandWidth);
+        Probabilities.requireUnit("warnThreshold", warnThreshold);
+        Probabilities.requireUnit("quarantineThreshold", quarantineThreshold);
+        Probabilities.requireUnit("blockThreshold", blockThreshold);
+        Probabilities.requireUnit("llmThreshold", llmThreshold);
+        Probabilities.requireUnit("routingBandWidth", routingBandWidth);
         if (burstThreshold < 1) {
             throw new IllegalArgumentException(
                     "burstThreshold must be a positive count (>= 1) but was " + burstThreshold);
@@ -81,11 +82,5 @@ public record Policy(
             return Decision.WARN;
         }
         return Decision.ALLOW;
-    }
-
-    private static void requireUnit(String name, double value) {
-        if (value < 0.0 || value > 1.0 || Double.isNaN(value)) {
-            throw new IllegalArgumentException(name + " must be in [0,1] but was " + value);
-        }
     }
 }

@@ -38,9 +38,7 @@ public record FusedScore(double posterior, double posteriorLogit, double uncerta
         double senderUncertainty) {
 
     public FusedScore {
-        if (posterior < 0.0 || posterior > 1.0 || Double.isNaN(posterior)) {
-            throw new IllegalArgumentException("posterior must be in [0,1] but was " + posterior);
-        }
+        Probabilities.requireUnit("posterior", posterior);
         if (uncertaintyBand < 0.0 || Double.isNaN(uncertaintyBand)) {
             throw new IllegalArgumentException(
                     "uncertaintyBand must be non-negative but was " + uncertaintyBand);
