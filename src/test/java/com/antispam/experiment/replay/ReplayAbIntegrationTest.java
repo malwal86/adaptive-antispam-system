@@ -10,7 +10,6 @@ import com.antispam.ingest.IngestService;
 import com.antispam.seed.GroundTruthLabel;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;

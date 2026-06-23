@@ -29,9 +29,6 @@ public class EvalSplitRepository {
             values (?, ?, ?)
             """;
 
-    private static final String COUNTS_BY_SIDE_SQL =
-            "select split_side, count(*) as n from eval_split_assignments group by split_side";
-
     private static final String COUNTS_BY_SIDE_AND_LABEL_SQL = """
             select a.split_side as split_side, g.label as label, count(*) as n
             from eval_split_assignments a
@@ -69,15 +66,6 @@ public class EvalSplitRepository {
                 return rows.size();
             }
         });
-    }
-
-    /** Emails on each side of the stored split; a side with no rows is omitted. */
-    public Map<SplitSide, Long> countsBySide() {
-        Map<SplitSide, Long> counts = new EnumMap<>(SplitSide.class);
-        RowCallbackHandler accumulate = rs ->
-                counts.put(SplitSide.fromDbValue(rs.getString("split_side")), rs.getLong("n"));
-        jdbc.query(COUNTS_BY_SIDE_SQL, accumulate);
-        return counts;
     }
 
     /** Per-(side, class) counts of the stored split, for surfacing class balance. */

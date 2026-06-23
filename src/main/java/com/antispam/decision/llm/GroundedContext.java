@@ -5,6 +5,7 @@ import com.antispam.features.EmailFeatures;
 import com.antispam.features.FeatureSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 /**
  * The grounded context the LLM is reasoned over (story 05.03; PRD §Subsystem 5): the
@@ -92,7 +93,7 @@ public record GroundedContext(
         if (reasons.isEmpty()) {
             return "(unspecified)";
         }
-        return reasons.stream().map(Enum::name).collect(java.util.stream.Collectors.joining(", "));
+        return reasons.stream().map(Enum::name).collect(Collectors.joining(", "));
     }
 
     /** An auth token, lower-cased for a stable rendering, or the extractor's sentinel when absent. */

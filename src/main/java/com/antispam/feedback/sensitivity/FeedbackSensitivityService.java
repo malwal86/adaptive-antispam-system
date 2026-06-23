@@ -19,6 +19,7 @@ import com.antispam.seed.GroundTruthLabel;
 import com.antispam.seed.GroundTruthLabelRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -191,7 +192,7 @@ public class FeedbackSensitivityService {
      * weight-floor breakdown.
      */
     private double harmfulWeight(String sender, ReputationSignal harmful) {
-        Map<String, Double> bySignal = new java.util.HashMap<>();
+        Map<String, Double> bySignal = new HashMap<>();
         jdbc.query(DRIFT_SQL, rs -> {
             bySignal.put(rs.getString("signal"), rs.getDouble("total"));
         }, sender);
