@@ -134,7 +134,7 @@ class LlmRouterTest {
 
     private static Policy policy(double llmThreshold, double routingBandWidth) {
         return new Policy("routing-test-v1", true, 0.50, 0.80, 0.95,
-                llmThreshold, routingBandWidth, "bootstrap-v1", Instant.EPOCH);
+                llmThreshold, routingBandWidth, 20, "bootstrap-v1", Instant.EPOCH);
     }
 
     /** A fused score with a posterior and an attenuated boundary band, and no sender uncertainty. */

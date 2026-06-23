@@ -216,6 +216,20 @@ antispam:
     # Redis is unavailable the read transparently falls back to Postgres.
     cache:
       enabled: ${ANTISPAM_REPUTATION_CACHE_ENABLED:false}
+  # Runtime burst override (story 06.01). The velocity half of the warm-then-attack defence
+  # (time decay, Epic 03, is the other half): each email records a hit in a per-sender Redis
+  # sliding window, and when a sender's count within the window exceeds the active policy's
+  # burst_threshold the decision is escalated regardless of posterior (PRD §Subsystem 1 step 4,
+  # §Subsystem 4). The *threshold* is on the policy (versioned, comparable per regime); window and
+  # escalate-to are the detector mechanism here. Off by default so local/dev and the Postgres-only
+  # tests wire the no-op NoBurstOverride and never dial Redis; the hosted deploy sets
+  # ANTISPAM_BURST_ENABLED=true with APP_REDIS_URL. On a Redis outage the detector degrades OPEN
+  # (treats it as no burst) — unlike the budget, which fails closed — since failing closed would
+  # mass-escalate legitimate mail. Window and escalate-to are tunable here without a redeploy.
+  burst:
+    enabled: ${ANTISPAM_BURST_ENABLED:false}
+    window: ${ANTISPAM_BURST_WINDOW:60s}
+    escalate-to: ${ANTISPAM_BURST_ESCALATE_TO:QUARANTINE}
   # LLM fallback (story 05.02). The uncertain ~5% the router escalates (05.01) is sent to
   # Spring AI's ChatClient for a strictly-typed verdict. Off by default so local dev and
   # the full-context tests never reach a provider — a routed decision then fail-degrades on

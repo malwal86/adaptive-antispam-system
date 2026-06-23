@@ -30,6 +30,10 @@ import java.time.Instant;
  *                           within this distance of a tier cut-point is escalated, the band
  *                           widened further at decide time by the sender's reputation uncertainty.
  *                           Not used by {@link #tierFor}
+ * @param burstThreshold     the runtime burst-override velocity threshold (story 06.01): the count
+ *                           of a sender's messages within the detector's sliding window above which
+ *                           the decision is escalated regardless of posterior. A positive count, not
+ *                           a probability; not used by {@link #tierFor}
  * @param modelVersion       the model artifact this regime is calibrated for
  * @param createdAt          when the policy was created
  */
@@ -41,6 +45,7 @@ public record Policy(
         double blockThreshold,
         double llmThreshold,
         double routingBandWidth,
+        int burstThreshold,
         String modelVersion,
         Instant createdAt) {
 
@@ -50,6 +55,10 @@ public record Policy(
         requireUnit("blockThreshold", blockThreshold);
         requireUnit("llmThreshold", llmThreshold);
         requireUnit("routingBandWidth", routingBandWidth);
+        if (burstThreshold < 1) {
+            throw new IllegalArgumentException(
+                    "burstThreshold must be a positive count (>= 1) but was " + burstThreshold);
+        }
         if (!(warnThreshold <= quarantineThreshold && quarantineThreshold <= blockThreshold)) {
             throw new IllegalArgumentException(String.format(
                     "tier thresholds must be a non-decreasing ladder but were warn=%.4f "

@@ -101,7 +101,7 @@ public class PolicyDecisionService {
         Decision tier = baseTier(active, outcome, fused);
         List<ReasonCode> reasons = new ArrayList<>(outcome.reasonCodes());
 
-        Optional<Escalation> escalation = burstOverride.evaluate(email);
+        Optional<Escalation> escalation = burstOverride.evaluate(email, active);
         if (escalation.isPresent()) {
             Decision escalated = Decision.mostSevere(List.of(tier, escalation.get().tier()));
             if (escalated != tier) {
