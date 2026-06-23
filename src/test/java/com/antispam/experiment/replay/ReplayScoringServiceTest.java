@@ -14,6 +14,7 @@ import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.decision.policy.PolicyScorer;
 import com.antispam.decision.policy.ScoredDecision;
 import com.antispam.event.ReplayEmailEvent;
+import com.antispam.experiment.ExperimentContext;
 import com.antispam.ingest.Email;
 import com.antispam.ingest.EmailRepository;
 import com.antispam.ingest.ParsedEmail;
@@ -69,6 +70,29 @@ class ReplayScoringServiceTest {
 
         assertThat(written).isTrue();
         verify(decisions).save(RUN, EMAIL_ID, scored);
+    }
+
+    @Test
+    void scores_inside_a_read_only_experiment_scope_and_restores_it_afterwards() {
+        // Side-effect isolation (story 09.03): replay scoring runs read-only, so a stray live-state
+        // write underneath would be blocked. Prove the scope is active when the verdict is recorded
+        // and cleared once scoring returns.
+        Email email = email();
+        Policy policy = policy("cand-v2");
+        ScoredDecision scored = scored("cand-v2");
+        when(emails.findById(EMAIL_ID)).thenReturn(Optional.of(email));
+        when(policies.findByVersion("cand-v2")).thenReturn(Optional.of(policy));
+        when(scorer.score(email, policy)).thenReturn(scored);
+        boolean[] readOnlyDuringSave = {false};
+        when(decisions.save(RUN, EMAIL_ID, scored)).thenAnswer(invocation -> {
+            readOnlyDuringSave[0] = ExperimentContext.isReadOnly();
+            return true;
+        });
+
+        service().score(EVENT);
+
+        assertThat(readOnlyDuringSave[0]).isTrue();
+        assertThat(ExperimentContext.isReadOnly()).isFalse();
     }
 
     @Test

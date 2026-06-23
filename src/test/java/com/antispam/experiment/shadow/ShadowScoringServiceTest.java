@@ -15,6 +15,7 @@ import com.antispam.decision.RouteUsed;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.decision.policy.ScoredDecision;
+import com.antispam.experiment.ExperimentContext;
 import com.antispam.experiment.shadow.ShadowDiff.Agreement;
 import com.antispam.experiment.shadow.ShadowDiff.Direction;
 import java.time.Instant;
@@ -95,6 +96,25 @@ class ShadowScoringServiceTest {
         service().shadowScore(EMAIL_ID, OUTCOME, FUSED);
 
         verify(shadowDecisions, never()).save(any(), any(), any(), any());
+    }
+
+    @Test
+    void records_inside_a_read_only_experiment_scope_and_restores_it_afterwards() {
+        // Side-effect isolation (story 09.03): the shadow scoring runs read-only, so a stray live-state
+        // write underneath would be blocked. Prove the scope is active when the row is recorded and
+        // cleared once scoring returns.
+        when(policies.findShadow()).thenReturn(Optional.of(STRICT));
+        when(policies.findActive()).thenReturn(Optional.of(LENIENT));
+        boolean[] readOnlyDuringSave = {false};
+        when(shadowDecisions.save(any(), any(), any(), any())).thenAnswer(invocation -> {
+            readOnlyDuringSave[0] = ExperimentContext.isReadOnly();
+            return null;
+        });
+
+        service().shadowScore(EMAIL_ID, OUTCOME, FUSED);
+
+        assertThat(readOnlyDuringSave[0]).isTrue();
+        assertThat(ExperimentContext.isReadOnly()).isFalse();
     }
 
     @Test

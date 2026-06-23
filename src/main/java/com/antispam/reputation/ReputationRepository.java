@@ -1,5 +1,6 @@
 package com.antispam.reputation;
 
+import com.antispam.experiment.ExperimentContext;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -77,6 +78,7 @@ public class ReputationRepository {
 
     /** Appends one signal to the log. The database assigns {@code id} and {@code occurred_at}. */
     public void append(ReputationEvent event) {
+        ExperimentContext.requireLiveWritePermitted("reputation_events");
         jdbc.update(APPEND_SQL,
                 event.senderKey(),
                 event.signal().name(),
@@ -111,6 +113,7 @@ public class ReputationRepository {
 
     /** Upserts the sender's cached reputation mean (refreshed on every recorded signal). */
     public void saveScore(String senderKey, double score) {
+        ExperimentContext.requireLiveWritePermitted("senders");
         jdbc.update(SAVE_SCORE_SQL, senderKey, score);
     }
 

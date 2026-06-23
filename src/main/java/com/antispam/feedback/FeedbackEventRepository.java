@@ -1,6 +1,7 @@
 package com.antispam.feedback;
 
 import com.antispam.decision.Decision;
+import com.antispam.experiment.ExperimentContext;
 import com.antispam.seed.GroundTruthLabel;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +42,7 @@ public class FeedbackEventRepository {
 
     /** Appends all events of a run in one batch. */
     public void saveAll(List<FeedbackEvent> events) {
+        ExperimentContext.requireLiveWritePermitted("feedback_events");
         jdbc.batchUpdate(INSERT_SQL, events, events.size(), (ps, event) -> {
             ps.setObject(1, event.id());
             ps.setObject(2, event.emailId());

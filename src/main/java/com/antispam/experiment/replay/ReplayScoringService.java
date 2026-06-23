@@ -5,6 +5,7 @@ import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.decision.policy.PolicyScorer;
 import com.antispam.decision.policy.ScoredDecision;
 import com.antispam.event.ReplayEmailEvent;
+import com.antispam.experiment.ExperimentContext;
 import com.antispam.ingest.Email;
 import com.antispam.ingest.EmailRepository;
 import java.util.Optional;
@@ -51,23 +52,28 @@ public class ReplayScoringService {
      *         policy could not be resolved, or the decision was already recorded (a redelivery)
      */
     public boolean score(ReplayEmailEvent event) {
-        Optional<Email> email = emails.findById(event.emailId());
-        if (email.isEmpty()) {
-            log.warn("replay skipped: email not found run={} id={}", event.runId(), event.emailId());
-            return false;
-        }
-        Optional<Policy> policy = policies.findByVersion(event.policyVersion());
-        if (policy.isEmpty()) {
-            log.error("replay skipped: policy not found run={} policy={} id={}",
-                    event.runId(), event.policyVersion(), event.emailId());
-            return false;
-        }
+        // Read-only scope (story 09.03): replay reads the immutable email, the run's policy, and the
+        // sender's reputation, and writes only replay_decisions; any stray write to live state
+        // underneath is blocked at the repository rather than left to convention.
+        return ExperimentContext.callReadOnly(() -> {
+            Optional<Email> email = emails.findById(event.emailId());
+            if (email.isEmpty()) {
+                log.warn("replay skipped: email not found run={} id={}", event.runId(), event.emailId());
+                return false;
+            }
+            Optional<Policy> policy = policies.findByVersion(event.policyVersion());
+            if (policy.isEmpty()) {
+                log.error("replay skipped: policy not found run={} policy={} id={}",
+                        event.runId(), event.policyVersion(), event.emailId());
+                return false;
+            }
 
-        ScoredDecision scored = scorer.score(email.get(), policy.get());
-        boolean written = decisions.save(event.runId(), event.emailId(), scored);
-        log.debug("replay scored run={} id={} policy={} decision={} route={} written={}",
-                event.runId(), event.emailId(), scored.policyVersion(), scored.decision(),
-                scored.route(), written);
-        return written;
+            ScoredDecision scored = scorer.score(email.get(), policy.get());
+            boolean written = decisions.save(event.runId(), event.emailId(), scored);
+            log.debug("replay scored run={} id={} policy={} decision={} route={} written={}",
+                    event.runId(), event.emailId(), scored.policyVersion(), scored.decision(),
+                    scored.route(), written);
+            return written;
+        });
     }
 }
