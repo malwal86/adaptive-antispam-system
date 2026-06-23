@@ -16,10 +16,9 @@ import org.springframework.stereotype.Repository;
  * database.
  *
  * <p>The {@code vector} type has no JDBC binding, so this repository bridges to it
- * in text form: it sends the embedding as pgvector's {@code [v1,v2,...]} literal
- * cast with {@code ?::vector}, and reads it back by parsing that same literal. The
- * format is locale-independent ({@link Float#toString} never emits a decimal
- * comma), so a row round-trips byte-for-byte regardless of the server locale.
+ * in text form via {@link PgVector}: it sends the embedding as pgvector's
+ * {@code [v1,v2,...]} literal cast with {@code ?::vector}, and reads it back by
+ * parsing that same literal.
  *
  * <p>{@link #save} is an upsert on the key — re-embedding an email at the same
  * version refreshes the (deterministically identical) vector in place rather than
@@ -58,17 +57,23 @@ public class EmailEmbeddingRepository {
         this.jdbc = jdbc;
     }
 
+    private static final String SELECT_ALL_SQL = """
+            select email_id, embedding
+            from email_embeddings
+            where model_version = ?
+            order by email_id
+            """;
+
     /** Inserts or refreshes the embedding row for {@code (emailId, modelVersion)}. */
     public void save(UUID emailId, String modelVersion, float[] embedding) {
-        String literal = toVectorLiteral(embedding);
-        jdbc.update(UPSERT_SQL, emailId, modelVersion, literal);
+        jdbc.update(UPSERT_SQL, emailId, modelVersion, PgVector.toLiteral(embedding));
     }
 
     /** Returns the stored embedding for an email at a specific version, if present. */
     public Optional<float[]> find(UUID emailId, String modelVersion) {
         try {
             float[] embedding = jdbc.queryForObject(
-                    SELECT_SQL, (rs, rowNum) -> parseVector(rs.getString("embedding")),
+                    SELECT_SQL, (rs, rowNum) -> PgVector.parse(rs.getString("embedding")),
                     emailId, modelVersion);
             return Optional.ofNullable(embedding);
         } catch (EmptyResultDataAccessException e) {
@@ -77,43 +82,30 @@ public class EmailEmbeddingRepository {
     }
 
     /**
+     * Returns every stored embedding at the given model version, ordered by
+     * {@code email_id} so the read is deterministic. This is the offline clusterer's
+     * input (story 06.03): the whole embedding corpus for one version, loaded once,
+     * grouped in memory — never a per-email fast-path read.
+     */
+    public List<EmbeddedEmail> findAll(String modelVersion) {
+        return jdbc.query(SELECT_ALL_SQL, EMBEDDED_EMAIL_MAPPER, modelVersion);
+    }
+
+    private static final RowMapper<EmbeddedEmail> EMBEDDED_EMAIL_MAPPER =
+            (rs, rowNum) -> new EmbeddedEmail(
+                    rs.getObject("email_id", UUID.class), PgVector.parse(rs.getString("embedding")));
+
+    /**
      * Returns the {@code limit} embeddings most similar to {@code query} at the
      * given model version, nearest first, each with its cosine similarity in
      * {@code [-1, 1]}. The query vector is matched against rows of the same version
      * only, so similarities are always between comparable embeddings.
      */
     public List<EmbeddingNeighbor> nearestNeighbors(float[] query, String modelVersion, int limit) {
-        String literal = toVectorLiteral(query);
+        String literal = PgVector.toLiteral(query);
         return jdbc.query(NEAREST_SQL, NEIGHBOR_MAPPER, literal, modelVersion, literal, limit);
     }
 
     private static final RowMapper<EmbeddingNeighbor> NEIGHBOR_MAPPER = (rs, rowNum) ->
             new EmbeddingNeighbor(rs.getObject("email_id", UUID.class), rs.getDouble("similarity"));
-
-    /** Formats an embedding as pgvector's {@code [v1,v2,...]} text literal. */
-    private static String toVectorLiteral(float[] embedding) {
-        StringBuilder sb = new StringBuilder(embedding.length * 8 + 2);
-        sb.append('[');
-        for (int i = 0; i < embedding.length; i++) {
-            if (i > 0) {
-                sb.append(',');
-            }
-            sb.append(Float.toString(embedding[i]));
-        }
-        return sb.append(']').toString();
-    }
-
-    /** Parses pgvector's {@code [v1,v2,...]} text literal back into a float array. */
-    private static float[] parseVector(String literal) {
-        String body = literal.substring(1, literal.length() - 1); // strip [ ]
-        if (body.isEmpty()) {
-            return new float[0];
-        }
-        String[] parts = body.split(",");
-        float[] embedding = new float[parts.length];
-        for (int i = 0; i < parts.length; i++) {
-            embedding[i] = Float.parseFloat(parts[i]);
-        }
-        return embedding;
-    }
 }
