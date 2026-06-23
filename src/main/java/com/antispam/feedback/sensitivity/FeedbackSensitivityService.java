@@ -122,8 +122,8 @@ public class FeedbackSensitivityService {
         FeedbackRun run = simulator.simulate(stream, new PopulationSpec(spec.baseSeed() + index, mix.populationSize(), weights));
         gate.gate(run.runId());
 
-        double hamDrift = netDrift(legitSender, ReputationSignal.BAD);   // report bombers push BAD
-        double spamPromotion = netDrift(spamSender, ReputationSignal.GOOD); // rescue bombers push GOOD
+        double hamDrift = harmfulWeight(legitSender, ReputationSignal.BAD);    // report bombers push BAD
+        double spamPromotion = harmfulWeight(spamSender, ReputationSignal.GOOD); // rescue bombers push GOOD
         boolean blunted = hamDrift <= props.driftTolerance() && spamPromotion <= props.driftTolerance();
         return new SensitivityPoint(fraction, spec.populationSize(), mix.bomberCount(), hamDrift, spamPromotion, blunted);
     }
@@ -181,19 +181,20 @@ public class FeedbackSensitivityService {
     }
 
     /**
-     * The net feedback-driven reputation weight a sender accrued in the {@code harmful} direction —
-     * {@code harmful − opposite}. For the legit sender the harmful signal is {@link
-     * ReputationSignal#BAD} (report bombing); for the spam sender it is {@link ReputationSignal#GOOD}
-     * (rescue bombing). Zero means the attack moved nothing.
+     * The feedback-driven reputation weight a sender accrued in the attack's <em>harmful</em>
+     * direction — the attack's footprint after the gate. For the legit sender that is {@link
+     * ReputationSignal#BAD} weight (report bombing trying to down-rep it); for the spam sender it is
+     * {@link ReputationSignal#GOOD} weight (rescue bombing trying to promote it). It is deliberately
+     * one-directional, not net: a legit sender legitimately earning GOOD from genuine clicks is the
+     * system working, not the attack — so only the harmful weight measures whether the attack landed.
+     * Zero means the attack moved nothing, which is exactly what the gate guarantees below its
+     * weight-floor breakdown.
      */
-    private double netDrift(String sender, ReputationSignal harmful) {
-        Map<String, Object> bySignal = new java.util.HashMap<>();
+    private double harmfulWeight(String sender, ReputationSignal harmful) {
+        Map<String, Double> bySignal = new java.util.HashMap<>();
         jdbc.query(DRIFT_SQL, rs -> {
             bySignal.put(rs.getString("signal"), rs.getDouble("total"));
         }, sender);
-        double harmfulWeight = ((Number) bySignal.getOrDefault(harmful.name(), 0.0)).doubleValue();
-        ReputationSignal opposite = harmful == ReputationSignal.BAD ? ReputationSignal.GOOD : ReputationSignal.BAD;
-        double oppositeWeight = ((Number) bySignal.getOrDefault(opposite.name(), 0.0)).doubleValue();
-        return harmfulWeight - oppositeWeight;
+        return bySignal.getOrDefault(harmful.name(), 0.0);
     }
 }
