@@ -108,8 +108,12 @@ class BurstOverrideIntegrationTest extends AbstractPostgresIntegrationTest {
     void seedPolicyAndResetRedis() {
         now = BASE;
         redis.getRequiredConnectionFactory().getConnection().serverCommands().flushDb();
-        policies.save(new Policy("burst-it-v1", false, 0.50, 0.80, 0.95, 0.40, 0.05,
-                THRESHOLD, OnnxModel.MODEL_VERSION, Instant.EPOCH));
+        // The integration suite shares one Postgres container, so the test policy survives between
+        // methods: insert it once, then just (re)activate it each time.
+        if (policies.findByVersion("burst-it-v1").isEmpty()) {
+            policies.save(new Policy("burst-it-v1", false, 0.50, 0.80, 0.95, 0.40, 0.05,
+                    THRESHOLD, OnnxModel.MODEL_VERSION, Instant.EPOCH));
+        }
         policies.activate("burst-it-v1");
         policy = policies.findActive().orElseThrow();
     }
