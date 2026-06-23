@@ -30,6 +30,16 @@ public class LlmMeter {
     /** Counter, tagged {@code scope=daily|monthly} — calls the budget cap denied (story 05.04). */
     static final String BUDGET_DENIED = "antispam.llm.budget.denied";
 
+    /**
+     * Counter, tagged {@code state} — quarantine-pending resolutions by lifecycle state (story
+     * 05.06): pending (withheld), promoted, confirmed, degraded. The degraded count is the
+     * observable "running degraded" banner signal (AC 5).
+     */
+    static final String RESOLUTION = "antispam.llm.resolution";
+
+    /** Counter — async resolutions that blew the SLA deadline and fail-degraded (story 05.06). */
+    static final String SLA_TIMEOUT = "antispam.llm.sla.timeout";
+
     private final MeterRegistry meters;
 
     @Autowired
@@ -65,6 +75,16 @@ public class LlmMeter {
         meters.counter(CALL, "outcome", "degraded").increment();
         meters.counter(DEGRADED, "reason", DegradeReason.BUDGET.tag()).increment();
         meters.counter(BUDGET_DENIED, "scope", scope.tag()).increment();
+    }
+
+    /** Records a quarantine-pending resolution reaching {@code state} (story 05.06). */
+    public void recordResolution(ResolutionState state) {
+        meters.counter(RESOLUTION, "state", state.name().toLowerCase(java.util.Locale.ROOT)).increment();
+    }
+
+    /** Records an async resolution that exceeded the SLA deadline and fail-degraded (story 05.06). */
+    public void recordSlaTimeout() {
+        meters.counter(SLA_TIMEOUT).increment();
     }
 
     private void recordCost(BigDecimal costUsd) {

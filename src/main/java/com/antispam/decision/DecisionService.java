@@ -4,6 +4,8 @@ import com.antispam.decision.hardrule.HardRuleCircuitBreaker;
 import com.antispam.decision.hardrule.HardRuleEngine;
 import com.antispam.decision.llm.LlmFallbackService;
 import com.antispam.decision.llm.LlmOutcome;
+import com.antispam.decision.llm.LlmProperties;
+import com.antispam.decision.llm.QuarantinePendingService;
 import com.antispam.decision.policy.PolicyDecisionService;
 import com.antispam.ingest.Email;
 import java.math.BigDecimal;
@@ -46,9 +48,16 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>The hard-rule circuit breaker floors the final decision</b> (story 05.05). Before the row
  * is written, {@link HardRuleCircuitBreaker} guarantees the decision is never softer than the
- * hard-rule verdict, so a (future) LLM verdict can escalate an ambiguous email but can never
- * downgrade a hard-rule block/quarantine to allow. It is the always-on control that makes story
- * 05.06's verdict-to-tier resolution safe by construction.
+ * hard-rule verdict, so an LLM verdict can escalate an ambiguous email but can never downgrade a
+ * hard-rule block/quarantine to allow.
+ *
+ * <p><b>Quarantine-pending when the LLM is enabled</b> (story 05.06). With the LLM on, an
+ * LLM-routed (uncertain) email is not decided synchronously: {@link #decide} withholds it
+ * (quarantine-pending) within the &lt;100ms budget and hands it to
+ * {@link com.antispam.decision.llm.QuarantinePendingService}, which resolves it asynchronously
+ * within the SLA — promote, confirm, or fail-degrade — never deliver-then-retract. With the LLM
+ * disabled (local/dev/tests) there is no provider to wait for, so the inline call simply
+ * fail-degrades on the fast-path posterior, exactly as in story 05.02.
  */
 @Service
 public class DecisionService {
@@ -62,6 +71,8 @@ public class DecisionService {
     private final FusionService fusionService;
     private final PolicyDecisionService policyDecisionService;
     private final LlmFallbackService llmFallbackService;
+    private final LlmProperties llmProperties;
+    private final QuarantinePendingService quarantinePendingService;
 
     @Autowired
     public DecisionService(
@@ -71,7 +82,9 @@ public class DecisionService {
             ClassificationRepository repository,
             FusionService fusionService,
             PolicyDecisionService policyDecisionService,
-            LlmFallbackService llmFallbackService) {
+            LlmFallbackService llmFallbackService,
+            LlmProperties llmProperties,
+            QuarantinePendingService quarantinePendingService) {
         this.hardRuleEngine = hardRuleEngine;
         this.circuitBreaker = circuitBreaker;
         this.contentClassifier = contentClassifier;
@@ -79,6 +92,8 @@ public class DecisionService {
         this.fusionService = fusionService;
         this.policyDecisionService = policyDecisionService;
         this.llmFallbackService = llmFallbackService;
+        this.llmProperties = llmProperties;
+        this.quarantinePendingService = quarantinePendingService;
     }
 
     /**
@@ -106,26 +121,39 @@ public class DecisionService {
         FusedScore fused = fuseIfApplicable(email, outcome);
         PolicyDecisionService.TieredDecision tiered = policyDecisionService.decide(email, outcome, fused);
 
-        // When the router escalated the decision (route == LLM, story 05.01), actually call the LLM
-        // (story 05.02): the call yields a validated verdict or fail-degrades, and either way its
-        // cost and latency are recorded on the row. This story does NOT yet let the verdict change
-        // the tier — the provisional posterior-derived tier stands. Story 05.06 resolves the verdict
-        // into a tier (under 05.05's hard-rule circuit breaker) and moves the call onto the async
-        // quarantine-pending path within its SLA.
+        // Hard-rule circuit breaker floor (story 05.05): the final decision can never be softer than
+        // what the hard rules demand — the hard-rule verdict when one fired, else ALLOW (which floors
+        // nothing). Routed mail came off the model route, so its floor is ALLOW; the floor matters
+        // for the quarantine-pending resolution, which the LLM verdict can otherwise move.
+        Decision hardRuleFloor =
+                outcome.route() == RouteUsed.HARD_RULE ? outcome.decision() : Decision.ALLOW;
+
+        // Quarantine-pending path (story 05.06): when the router escalated the decision (route == LLM)
+        // and the LLM is actually enabled, the uncertain mail is provisionally WITHHELD and resolved
+        // asynchronously within the SLA — promote-to-inbox, confirm-spam, or fail-degrade — never
+        // deliver-then-retract. No inline LLM call, so the synchronous decision stays within <100ms.
+        // With the LLM disabled (local/dev/tests, no provider) there is nothing to wait for, so the
+        // call below fail-degrades inline on the fast-path posterior, exactly as before this story.
+        if (tiered.route() == RouteUsed.LLM && llmProperties.enabled()) {
+            QuarantinePendingService.ResolutionRequest request =
+                    new QuarantinePendingService.ResolutionRequest(
+                            email, tiered.routingReasons(), outcome.scores(), fused,
+                            tiered.policyVersion(), tiered.decision(), hardRuleFloor, outcome.latencyMs());
+            Classification pending = quarantinePendingService.beginResolution(request);
+            log.info("quarantine-pending email={} route={} provisional={} routingReasons={} policy={}",
+                    email.id(), RouteUsed.LLM, pending.decision(), tiered.routingReasons(),
+                    tiered.policyVersion());
+            return pending;
+        }
+
+        // Fast path (and the LLM-disabled fallback): call the LLM inline only to fail-degrade when
+        // it is routed but disabled (story 05.02); the provisional posterior-derived tier stands.
         LlmOutcome llm = tiered.route() == RouteUsed.LLM
                 ? llmFallbackService.classify(email, tiered.routingReasons())
                 : null;
         long latencyMs = outcome.latencyMs() + (llm == null ? 0L : llm.latencyMs());
         BigDecimal llmCostUsd = llm == null ? null : llm.costUsd();
 
-        // Hard-rule circuit breaker (story 05.05): the final decision can never be softer than what
-        // the hard rules demand. The floor is the hard-rule verdict when one fired (else ALLOW, which
-        // floors nothing). It is a no-op today — a hard-rule hit short-circuits before the LLM, so the
-        // tiered decision already respects it — but applying it always-on means that when story 05.06
-        // lets an LLM verdict change the tier, the floor is already standing between the verdict and
-        // the decision; an attempted downgrade would be refused and logged.
-        Decision hardRuleFloor =
-                outcome.route() == RouteUsed.HARD_RULE ? outcome.decision() : Decision.ALLOW;
         Decision finalDecision =
                 circuitBreaker.floorAtHardRule(email.id(), hardRuleFloor, tiered.decision());
 

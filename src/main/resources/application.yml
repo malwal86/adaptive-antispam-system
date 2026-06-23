@@ -242,6 +242,12 @@ antispam:
       daily-cap-usd: ${ANTISPAM_LLM_BUDGET_DAILY_USD:0.50}
       monthly-cap-usd: ${ANTISPAM_LLM_BUDGET_MONTHLY_USD:5.00}
       per-call-reservation-usd: ${ANTISPAM_LLM_BUDGET_RESERVATION_USD:0.01}
+    # Quarantine-pending SLA (story 05.06). When the LLM is enabled, uncertain mail is withheld
+    # (quarantine-pending) synchronously and resolved asynchronously within this deadline —
+    # promote-to-inbox, confirm-spam, or fail-degrade past it (PRD §Live timing: ~30s SLA). With
+    # the LLM disabled there is no async path, so this is unused. Tunable without a redeploy.
+    quarantine:
+      sla: ${ANTISPAM_LLM_SLA:30s}
   seed:
     enabled: false
     corpus-dir: seed-corpus
