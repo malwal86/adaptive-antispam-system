@@ -1,5 +1,7 @@
 package com.antispam.decision.calibration;
 
+import com.antispam.decision.Probabilities;
+
 /**
  * The promotion gate for calibration (story 04.02 AC 4): a model whose calibrated
  * scores are still less reliable than an agreed ceiling is rejected, because fusing an
@@ -34,9 +36,7 @@ public final class CalibrationGate {
      * @throws IllegalArgumentException if {@code maxEce} is not in {@code [0,1]}
      */
     public static Verdict evaluate(ReliabilityReport report, double maxEce) {
-        if (maxEce < 0.0 || maxEce > 1.0 || Double.isNaN(maxEce)) {
-            throw new IllegalArgumentException("maxEce must be in [0,1] but was " + maxEce);
-        }
+        Probabilities.requireUnit("maxEce", maxEce);
         boolean passed = report.eceCalibrated() <= maxEce;
         String reason = String.format(
                 "calibrated ECE %.4f %s ceiling %.4f for model %s (raw ECE was %.4f)",

@@ -58,9 +58,9 @@ public final class LogOddsFusion {
      */
     public static FusedScore fuse(double reputationPrior, double priorVariance,
             double modelConfidence, double trainingBaseRate) {
-        requireProbability("reputationPrior", reputationPrior);
-        requireProbability("modelConfidence", modelConfidence);
-        requireProbability("trainingBaseRate", trainingBaseRate);
+        Probabilities.requireUnit("reputationPrior", reputationPrior);
+        Probabilities.requireUnit("modelConfidence", modelConfidence);
+        Probabilities.requireUnit("trainingBaseRate", trainingBaseRate);
         if (priorVariance < 0.0 || Double.isNaN(priorVariance)) {
             throw new IllegalArgumentException("priorVariance must be >= 0 but was " + priorVariance);
         }
@@ -110,11 +110,5 @@ public final class LogOddsFusion {
             return EPS;
         }
         return p > 1.0 - EPS ? 1.0 - EPS : p;
-    }
-
-    private static void requireProbability(String name, double value) {
-        if (value < 0.0 || value > 1.0 || Double.isNaN(value)) {
-            throw new IllegalArgumentException(name + " must be in [0,1] but was " + value);
-        }
     }
 }
