@@ -276,6 +276,22 @@ antispam:
         report-bias: 0.02
         risk-tolerance: 0.95
         malicious: true
+  # Weighting/corroboration feedback gate (story 07.03): the single bridge from raw feedback to live
+  # state, because feedback is an attack surface (PRD §Subsystem 7). Every feedback event is weighted
+  # by trust x confidence — a malicious persona (report/rescue bomber) is down-weighted to
+  # malicious-trust — then grouped by sender/polarity and only allowed to move reputation + retrain
+  # labels when a group clears BOTH thresholds: min-corroborators distinct reporters (the report-bomb
+  # defence — one persona can never clear it) and min-weight aggregate weight (the low-trust defence —
+  # down-weighted bombers sum below it). max-reputation-weight caps a single emitted reputation event
+  # so a corroborated run moves state measurably but boundedly. Defaults: with full-trust personas at
+  # ~0.7 confidence, three independent reporters (~2.1) clear the gate; a lone or malicious report
+  # does not. Tunable here without a redeploy.
+  feedback:
+    gate:
+      malicious-trust: ${ANTISPAM_FEEDBACK_GATE_MALICIOUS_TRUST:0.1}
+      min-corroborators: ${ANTISPAM_FEEDBACK_GATE_MIN_CORROBORATORS:3}
+      min-weight: ${ANTISPAM_FEEDBACK_GATE_MIN_WEIGHT:1.5}
+      max-reputation-weight: ${ANTISPAM_FEEDBACK_GATE_MAX_REPUTATION_WEIGHT:5.0}
   # LLM fallback (story 05.02). The uncertain ~5% the router escalates (05.01) is sent to
   # Spring AI's ChatClient for a strictly-typed verdict. Off by default so local dev and
   # the full-context tests never reach a provider — a routed decision then fail-degrades on
