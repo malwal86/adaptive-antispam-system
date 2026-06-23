@@ -55,21 +55,28 @@ class EmailEmbeddingIntegrationTest extends AbstractPostgresIntegrationTest {
                 """);
 
         float[] shippingVector = service.embedAndStore(shipping).orElseThrow();
-        service.embedAndStore(billing).orElseThrow();
-        service.embedAndStore(security).orElseThrow();
+        float[] billingVector = service.embedAndStore(billing).orElseThrow();
+        float[] securityVector = service.embedAndStore(security).orElseThrow();
 
         // The embedding round-trips through pgvector unchanged.
         Optional<float[]> stored = repository.find(shipping, OnnxEmbeddingModel.EMBEDDING_VERSION);
         assertThat(stored).get().asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.FLOAT_ARRAY)
                 .containsExactly(shippingVector);
 
-        // A cosine query with the shipping vector returns the shipping email first,
-        // as a near-exact self-match (similarity ~1.0).
-        List<EmbeddingNeighbor> neighbors =
-                repository.nearestNeighbors(shippingVector, OnnxEmbeddingModel.EMBEDDING_VERSION, 3);
-        assertThat(neighbors.get(0).emailId()).isEqualTo(shipping);
-        assertThat(neighbors.get(0).cosineSimilarity()).isCloseTo(1.0, org.assertj.core.data.Offset.offset(1e-4));
-        assertThat(neighbors).extracting(EmbeddingNeighbor::emailId).contains(billing, security);
+        // A cosine query with the shipping vector returns the shipping email first, as a
+        // near-exact self-match (similarity ~1.0). The suite shares one Postgres, so other
+        // tests' embeddings populate the index too; asserting each email is its OWN nearest
+        // neighbor is robust to that shared corpus, where a fixed top-N is not.
+        List<EmbeddingNeighbor> nearest =
+                repository.nearestNeighbors(shippingVector, OnnxEmbeddingModel.EMBEDDING_VERSION, 1);
+        assertThat(nearest.get(0).emailId()).isEqualTo(shipping);
+        assertThat(nearest.get(0).cosineSimilarity()).isCloseTo(1.0, org.assertj.core.data.Offset.offset(1e-4));
+
+        // Billing and security are likewise embedded and queryable — each is its own nearest match.
+        assertThat(repository.nearestNeighbors(billingVector, OnnxEmbeddingModel.EMBEDDING_VERSION, 1)
+                .get(0).emailId()).isEqualTo(billing);
+        assertThat(repository.nearestNeighbors(securityVector, OnnxEmbeddingModel.EMBEDDING_VERSION, 1)
+                .get(0).emailId()).isEqualTo(security);
     }
 
     @Test
