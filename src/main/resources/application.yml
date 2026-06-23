@@ -292,6 +292,15 @@ antispam:
       min-corroborators: ${ANTISPAM_FEEDBACK_GATE_MIN_CORROBORATORS:3}
       min-weight: ${ANTISPAM_FEEDBACK_GATE_MIN_WEIGHT:1.5}
       max-reputation-weight: ${ANTISPAM_FEEDBACK_GATE_MAX_REPUTATION_WEIGHT:5.0}
+    # Malicious-persona sensitivity sweep (story 07.04): POST /feedback/sensitivity runs the feedback
+    # loop over populations with a growing malicious fraction (report bombers attacking delivered ham,
+    # rescue bombers attacking quarantined spam) and reports how far each attack moved state through
+    # the gate. drift-tolerance is the most reputation movement (in weight units) a sweep point may
+    # show and still count as "blunted": below the gate's analytical breakdown the bombers move state
+    # by exactly zero (their down-weighted reports cannot clear min-weight), so a small tolerance
+    # leaves rounding headroom without masking a real attack landing. Tunable here without a redeploy.
+    sensitivity:
+      drift-tolerance: ${ANTISPAM_FEEDBACK_SENSITIVITY_DRIFT_TOLERANCE:0.5}
   # LLM fallback (story 05.02). The uncertain ~5% the router escalates (05.01) is sent to
   # Spring AI's ChatClient for a strictly-typed verdict. Off by default so local dev and
   # the full-context tests never reach a provider — a routed decision then fail-degrades on
