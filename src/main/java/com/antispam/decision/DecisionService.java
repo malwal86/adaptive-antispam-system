@@ -1,5 +1,6 @@
 package com.antispam.decision;
 
+import com.antispam.decision.hardrule.HardRuleCircuitBreaker;
 import com.antispam.decision.hardrule.HardRuleEngine;
 import com.antispam.decision.llm.LlmFallbackService;
 import com.antispam.decision.llm.LlmOutcome;
@@ -42,6 +43,12 @@ import org.springframework.stereotype.Service;
  * {@link com.antispam.decision.llm.LlmFallbackService} for a validated verdict (or a degrade) and
  * records its cost and latency on the row. The verdict does not yet change the tier — that
  * resolution, and the async quarantine-pending SLA, are story 05.06.
+ *
+ * <p><b>The hard-rule circuit breaker floors the final decision</b> (story 05.05). Before the row
+ * is written, {@link HardRuleCircuitBreaker} guarantees the decision is never softer than the
+ * hard-rule verdict, so a (future) LLM verdict can escalate an ambiguous email but can never
+ * downgrade a hard-rule block/quarantine to allow. It is the always-on control that makes story
+ * 05.06's verdict-to-tier resolution safe by construction.
  */
 @Service
 public class DecisionService {
@@ -49,6 +56,7 @@ public class DecisionService {
     private static final Logger log = LoggerFactory.getLogger(DecisionService.class);
 
     private final HardRuleEngine hardRuleEngine;
+    private final HardRuleCircuitBreaker circuitBreaker;
     private final ContentClassifier contentClassifier;
     private final ClassificationRepository repository;
     private final FusionService fusionService;
@@ -58,12 +66,14 @@ public class DecisionService {
     @Autowired
     public DecisionService(
             HardRuleEngine hardRuleEngine,
+            HardRuleCircuitBreaker circuitBreaker,
             ContentClassifier contentClassifier,
             ClassificationRepository repository,
             FusionService fusionService,
             PolicyDecisionService policyDecisionService,
             LlmFallbackService llmFallbackService) {
         this.hardRuleEngine = hardRuleEngine;
+        this.circuitBreaker = circuitBreaker;
         this.contentClassifier = contentClassifier;
         this.repository = repository;
         this.fusionService = fusionService;
@@ -108,11 +118,22 @@ public class DecisionService {
         long latencyMs = outcome.latencyMs() + (llm == null ? 0L : llm.latencyMs());
         BigDecimal llmCostUsd = llm == null ? null : llm.costUsd();
 
+        // Hard-rule circuit breaker (story 05.05): the final decision can never be softer than what
+        // the hard rules demand. The floor is the hard-rule verdict when one fired (else ALLOW, which
+        // floors nothing). It is a no-op today — a hard-rule hit short-circuits before the LLM, so the
+        // tiered decision already respects it — but applying it always-on means that when story 05.06
+        // lets an LLM verdict change the tier, the floor is already standing between the verdict and
+        // the decision; an attempted downgrade would be refused and logged.
+        Decision hardRuleFloor =
+                outcome.route() == RouteUsed.HARD_RULE ? outcome.decision() : Decision.ALLOW;
+        Decision finalDecision =
+                circuitBreaker.floorAtHardRule(email.id(), hardRuleFloor, tiered.decision());
+
         // Re-stamp the route's verdict with the policy-derived tier, reasons, and route — the route
         // is the tiering stage's, since LLM routing (story 05.01) may have promoted it past the
         // route the classifier established. The latency now includes the LLM call when one was made.
         DecisionOutcome finalOutcome = new DecisionOutcome(
-                tiered.decision(), tiered.reasonCodes(), tiered.route(), latencyMs, outcome.scores());
+                finalDecision, tiered.reasonCodes(), tiered.route(), latencyMs, outcome.scores());
         Classification classification =
                 repository.save(email.id(), finalOutcome, fused, tiered.policyVersion(), llmCostUsd);
         // No PII here: only the email id, route, verdict, reason codes, posterior, policy, and the
