@@ -246,6 +246,36 @@ antispam:
   # redeploy.
   campaign-clustering:
     similarity-threshold: ${ANTISPAM_CAMPAIGN_SIMILARITY_THRESHOLD:0.80}
+  # Synthetic-user personas (story 07.01): the controllable population that drives the feedback
+  # loop (PRD §Subsystem 7). A persona is data, not code — its biases (click/report/risk, all in
+  # [0,1]) and its malicious flag (folded into config_json) live here, so adding a benign or
+  # malicious type is a YAML entry, never a code change. seed-on-startup is off by default so a
+  # normal boot and the Postgres-only tests never touch user_personas; the simulator deploy sets
+  # ANTISPAM_PERSONAS_SEED=true. The default catalogue spans the axes the sensitivity sweep (07.04)
+  # varies: two good-faith readers and the two channel attackers (report/rescue bombers).
+  personas:
+    seed-on-startup: ${ANTISPAM_PERSONAS_SEED:false}
+    definitions:
+      - name: trusting-clicker      # opens most mail, rarely reports — the easy mark
+        click-bias: 0.85
+        report-bias: 0.10
+        risk-tolerance: 0.80
+        malicious: false
+      - name: skeptical-reporter    # cautious, reports readily — the diligent user
+        click-bias: 0.20
+        report-bias: 0.70
+        risk-tolerance: 0.20
+        malicious: false
+      - name: report-bomber         # mass-reports legitimate mail to poison the channel
+        click-bias: 0.05
+        report-bias: 0.98
+        risk-tolerance: 0.10
+        malicious: true
+      - name: rescue-bomber         # mass-rescues quarantined spam to whitewash a campaign
+        click-bias: 0.90
+        report-bias: 0.02
+        risk-tolerance: 0.95
+        malicious: true
   # LLM fallback (story 05.02). The uncertain ~5% the router escalates (05.01) is sent to
   # Spring AI's ChatClient for a strictly-typed verdict. Off by default so local dev and
   # the full-context tests never reach a provider — a routed decision then fail-degrades on
