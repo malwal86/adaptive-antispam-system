@@ -1,5 +1,6 @@
 package com.antispam.decision;
 
+import com.antispam.experiment.ExperimentContext;
 import java.math.BigDecimal;
 import java.sql.Array;
 import java.time.OffsetDateTime;
@@ -59,6 +60,7 @@ public class ClassificationRepository {
      */
     public Classification save(UUID emailId, DecisionOutcome outcome, FusedScore fused,
             String policyVersion, BigDecimal llmCostUsd) {
+        ExperimentContext.requireLiveWritePermitted("classifications");
         UUID id = UUID.randomUUID();
         String[] codeNames = outcome.reasonCodes().stream().map(Enum::name).toArray(String[]::new);
         ModelScores scores = outcome.scores();

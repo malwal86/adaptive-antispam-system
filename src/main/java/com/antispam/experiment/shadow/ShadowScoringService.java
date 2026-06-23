@@ -6,6 +6,7 @@ import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.decision.policy.PolicyScorer;
 import com.antispam.decision.policy.ScoredDecision;
+import com.antispam.experiment.ExperimentContext;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -74,23 +75,28 @@ public class ShadowScoringService {
      * Package-private so a unit test can drive it synchronously via a same-thread executor.
      */
     void record(UUID emailId, DecisionOutcome outcome, FusedScore fused) {
-        Optional<Policy> shadow = policies.findShadow();
-        if (shadow.isEmpty()) {
-            return;
-        }
-        Policy active = policies.findActive().orElseThrow(() -> new IllegalStateException(
-                "no active policy: shadow scoring compares against the enforcing regime"));
-        if (active.version().equals(shadow.get().version())) {
-            return;
-        }
+        // Read-only scope (story 09.03): the shadow path reads live policies and writes only
+        // shadow_decisions; any stray write to live reputation/feedback/classifications underneath
+        // is blocked at the repository, not left to discipline.
+        ExperimentContext.runReadOnly(() -> {
+            Optional<Policy> shadow = policies.findShadow();
+            if (shadow.isEmpty()) {
+                return;
+            }
+            Policy active = policies.findActive().orElseThrow(() -> new IllegalStateException(
+                    "no active policy: shadow scoring compares against the enforcing regime"));
+            if (active.version().equals(shadow.get().version())) {
+                return;
+            }
 
-        ScoredDecision activeScore = PolicyScorer.scoreFrom(outcome, fused, active);
-        ScoredDecision shadowScore = PolicyScorer.scoreFrom(outcome, fused, shadow.get());
-        ShadowDiff diff = ShadowDiff.between(activeScore.decision(), shadowScore.decision());
-        shadowDecisions.save(emailId, activeScore, shadowScore, diff);
+            ScoredDecision activeScore = PolicyScorer.scoreFrom(outcome, fused, active);
+            ScoredDecision shadowScore = PolicyScorer.scoreFrom(outcome, fused, shadow.get());
+            ShadowDiff diff = ShadowDiff.between(activeScore.decision(), shadowScore.decision());
+            shadowDecisions.save(emailId, activeScore, shadowScore, diff);
 
-        log.debug("shadow scored email={} active={}({}) shadow={}({}) agreement={} direction={}",
-                emailId, active.version(), activeScore.decision(),
-                shadow.get().version(), shadowScore.decision(), diff.agreement(), diff.direction());
+            log.debug("shadow scored email={} active={}({}) shadow={}({}) agreement={} direction={}",
+                    emailId, active.version(), activeScore.decision(),
+                    shadow.get().version(), shadowScore.decision(), diff.agreement(), diff.direction());
+        });
     }
 }
