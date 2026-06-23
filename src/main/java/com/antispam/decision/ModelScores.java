@@ -34,7 +34,7 @@ public record ModelScores(double spamScore, double phishingScore, String modelVe
      * serving path overrides it with {@link #withCalibratedConfidence(double)}.
      */
     public ModelScores(double spamScore, double phishingScore, String modelVersion) {
-        this(spamScore, phishingScore, modelVersion, clampUnit(spamScore + phishingScore));
+        this(spamScore, phishingScore, modelVersion, Probabilities.clampUnit(spamScore + phishingScore));
     }
 
     /**
@@ -43,18 +43,11 @@ public record ModelScores(double spamScore, double phishingScore, String modelVe
      * to a true frequency.
      */
     public double rawMalicious() {
-        return clampUnit(spamScore + phishingScore);
+        return Probabilities.clampUnit(spamScore + phishingScore);
     }
 
     /** A copy with the calibrated confidence replaced by an active calibrator's output. */
     public ModelScores withCalibratedConfidence(double calibratedConfidence) {
         return new ModelScores(spamScore, phishingScore, modelVersion, calibratedConfidence);
-    }
-
-    private static double clampUnit(double v) {
-        if (v < 0.0) {
-            return 0.0;
-        }
-        return v > 1.0 ? 1.0 : v;
     }
 }

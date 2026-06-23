@@ -28,7 +28,7 @@ export function Analyzer() {
   const [pendingSampleId, setPendingSampleId] = useState<string | null>(null);
   const [samples, setSamples] = useState<SeedSample[]>([]);
   const resultRef = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion();
+  const reduceMotion = useReducedMotion();
 
   // Load picker samples once; absence (empty corpus) is non-fatal — paste still works.
   useEffect(() => {
@@ -56,7 +56,7 @@ export function Analyzer() {
         // Bring the verdict into view on smaller screens.
         requestAnimationFrame(() =>
           resultRef.current?.scrollIntoView({
-            behavior: reduce ? "auto" : "smooth",
+            behavior: reduceMotion ? "auto" : "smooth",
             block: "nearest",
           }),
         );
@@ -67,7 +67,7 @@ export function Analyzer() {
         setPendingSampleId(null);
       }
     },
-    [reduce],
+    [reduceMotion],
   );
 
   const onSubmit = useCallback(
@@ -144,7 +144,7 @@ export function Analyzer() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: reduce ? 0 : 0.2 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
               role="alert"
               data-testid="error"
               className="flex items-center gap-3 rounded-lg border border-tier-block/40 bg-tier-block-container px-5 py-4 text-tier-block"
