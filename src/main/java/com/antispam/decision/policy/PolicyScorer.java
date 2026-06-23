@@ -60,7 +60,9 @@ public class PolicyScorer {
     }
 
     /**
-     * Scores {@code email} under {@code policy} without enforcing or persisting anything.
+     * Scores {@code email} under {@code policy} without enforcing or persisting anything: runs the
+     * content model and reputation fusion (the policy-independent part), then tiers and routes the
+     * result under {@code policy} (the policy-dependent part).
      *
      * @param email  the email to score
      * @param policy the regime to score it under (need not be the active one)
@@ -69,7 +71,27 @@ public class PolicyScorer {
     public ScoredDecision score(Email email, Policy policy) {
         DecisionOutcome outcome = decisionService.evaluate(email);
         FusedScore fused = fuseIfApplicable(email, outcome);
+        return scoreFrom(outcome, fused, policy);
+    }
 
+    /**
+     * Tiers and routes an already-computed model output under {@code policy} — the policy-dependent
+     * tail of {@link #score}, factored out as a pure static function so a caller that already has
+     * the model output can score a second policy from it for free (no model re-run). Shadow scoring
+     * (story 09.02) uses this to score the active and shadow policies from one evaluation, and it is
+     * the seam that keeps shadow free of any dependency on the live decision pipeline (so there is
+     * no {@code DecisionService → ShadowScoringService → PolicyScorer → DecisionService} bean cycle).
+     *
+     * <p>The model scores and the fused posterior are policy-independent — fusion takes reputation,
+     * calibration, and the training base rate, never a policy threshold — so only the tier and the
+     * LLM-routing decision differ between two policies scored from the same {@code outcome}/{@code fused}.
+     *
+     * @param outcome the route's verdict and scores (hard-rule, or model)
+     * @param fused   the fused posterior, or {@code null} when the model score was not fused
+     * @param policy  the regime to tier and route under
+     * @return the tier, reasons, route, and posterior {@code policy} assigns
+     */
+    public static ScoredDecision scoreFrom(DecisionOutcome outcome, FusedScore fused, Policy policy) {
         Decision tier = PolicyDecisionService.baseTier(policy, outcome, fused);
 
         RouteUsed route = outcome.route();

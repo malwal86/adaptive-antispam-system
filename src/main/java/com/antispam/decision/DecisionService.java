@@ -7,6 +7,7 @@ import com.antispam.decision.llm.LlmOutcome;
 import com.antispam.decision.llm.LlmProperties;
 import com.antispam.decision.llm.QuarantinePendingService;
 import com.antispam.decision.policy.PolicyDecisionService;
+import com.antispam.experiment.shadow.ShadowScoringService;
 import com.antispam.ingest.Email;
 import java.math.BigDecimal;
 import org.slf4j.Logger;
@@ -73,6 +74,7 @@ public class DecisionService {
     private final LlmFallbackService llmFallbackService;
     private final LlmProperties llmProperties;
     private final QuarantinePendingService quarantinePendingService;
+    private final ShadowScoringService shadowScoringService;
 
     @Autowired
     public DecisionService(
@@ -84,7 +86,8 @@ public class DecisionService {
             PolicyDecisionService policyDecisionService,
             LlmFallbackService llmFallbackService,
             LlmProperties llmProperties,
-            QuarantinePendingService quarantinePendingService) {
+            QuarantinePendingService quarantinePendingService,
+            ShadowScoringService shadowScoringService) {
         this.hardRuleEngine = hardRuleEngine;
         this.circuitBreaker = circuitBreaker;
         this.contentClassifier = contentClassifier;
@@ -94,6 +97,7 @@ public class DecisionService {
         this.llmFallbackService = llmFallbackService;
         this.llmProperties = llmProperties;
         this.quarantinePendingService = quarantinePendingService;
+        this.shadowScoringService = shadowScoringService;
     }
 
     /**
@@ -119,6 +123,13 @@ public class DecisionService {
     public Classification decide(Email email) {
         DecisionOutcome outcome = evaluate(email);
         FusedScore fused = fuseIfApplicable(email, outcome);
+
+        // Live shadow scoring (story 09.02): score the same model output under the configured shadow
+        // policy and record the diff, off the request thread. Logged-only and isolated — it never
+        // enforces and never fails the live decision — so it sits before the enforced tiering and
+        // adds no latency. A no-op when no shadow policy is configured.
+        shadowScoringService.shadowScore(email.id(), outcome, fused);
+
         PolicyDecisionService.TieredDecision tiered = policyDecisionService.decide(email, outcome, fused);
 
         // Hard-rule circuit breaker floor (story 05.05): the final decision can never be softer than

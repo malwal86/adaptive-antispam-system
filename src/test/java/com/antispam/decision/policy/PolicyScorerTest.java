@@ -147,6 +147,21 @@ class PolicyScorerTest {
         assertThat(scored.routingReasons()).isEmpty();
     }
 
+    @Test
+    void scoreFrom_tiers_a_precomputed_output_without_touching_the_pipeline() {
+        // The static path shadow scoring uses: no DecisionService/FusionService call, just tiering
+        // and routing of an already-computed model output. A fixed posterior of 0.60 tiers WARN
+        // under LENIENT and QUARANTINE under STRICT — proving the same output yields policy-specific
+        // verdicts.
+        ScoredDecision underLenient = PolicyScorer.scoreFrom(modelOutcome(), posterior(0.60), LENIENT);
+        ScoredDecision underStrict = PolicyScorer.scoreFrom(modelOutcome(), posterior(0.60), STRICT);
+
+        assertThat(underLenient.decision()).isEqualTo(Decision.WARN);
+        assertThat(underLenient.policyVersion()).isEqualTo("lenient-v1");
+        assertThat(underStrict.decision()).isEqualTo(Decision.QUARANTINE);
+        assertThat(underStrict.posterior()).isEqualTo(0.60);
+    }
+
     private static DecisionOutcome modelOutcome() {
         return modelOutcome(CONFIDENT);
     }
