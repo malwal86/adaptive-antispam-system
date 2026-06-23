@@ -236,6 +236,16 @@ antispam:
     # the offline embedding tier's job, 06.03). 6 separates trivial template variation (~few bits)
     # from unrelated mail (~32 bits). Tunable here without a redeploy.
     near-dup-hamming-threshold: ${ANTISPAM_BURST_NEAR_DUP_HAMMING:6}
+  # Offline embedding campaign clustering (story 06.03): the expensive, semantic tier that catches
+  # *reworded* variants the cheap surface tier (06.02 SimHash) misses. An out-of-band job clusters
+  # the stored email embeddings (04.03, pgvector) into campaign_clusters by cosine similarity — it
+  # reads embeddings and writes clusters only, never the live decision path. similarity-threshold is
+  # the one knob: emails at or above this cosine are the same campaign. 0.80 sits in the gap the
+  # embedding benchmark measured (reworded same-topic ~0.85-0.94, unrelated well under 0.5), so it
+  # co-clusters reworded variants while keeping distinct campaigns apart. Tunable here without a
+  # redeploy.
+  campaign-clustering:
+    similarity-threshold: ${ANTISPAM_CAMPAIGN_SIMILARITY_THRESHOLD:0.80}
   # LLM fallback (story 05.02). The uncertain ~5% the router escalates (05.01) is sent to
   # Spring AI's ChatClient for a strictly-typed verdict. Off by default so local dev and
   # the full-context tests never reach a provider — a routed decision then fail-degrades on
