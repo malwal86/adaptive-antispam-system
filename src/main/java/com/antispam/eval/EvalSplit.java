@@ -1,6 +1,5 @@
 package com.antispam.eval;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,22 +25,5 @@ public record EvalSplit(Map<UUID, SplitSide> sides, Map<UUID, String> groups, Sp
     /** The side {@code emailId} was assigned, or null if it was not in the corpus. */
     public SplitSide sideOf(UUID emailId) {
         return sides.get(emailId);
-    }
-
-    /** Email ids held out for eval. */
-    public List<UUID> evalIds() {
-        return idsOn(SplitSide.EVAL);
-    }
-
-    /** Email ids on the train side. */
-    public List<UUID> trainIds() {
-        return idsOn(SplitSide.TRAIN);
-    }
-
-    private List<UUID> idsOn(SplitSide side) {
-        return sides.entrySet().stream()
-                .filter(e -> e.getValue() == side)
-                .map(Map.Entry::getKey)
-                .toList();
     }
 }

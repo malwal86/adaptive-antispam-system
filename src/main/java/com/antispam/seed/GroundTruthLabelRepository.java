@@ -1,13 +1,10 @@
 package com.antispam.seed;
 
-import java.util.EnumMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -27,9 +24,6 @@ public class GroundTruthLabelRepository {
 
     private static final String SELECT_LABEL_SQL =
             "select label from ground_truth_labels where email_id = ?";
-
-    private static final String COUNT_BY_LABEL_SQL =
-            "select label, count(*) as n from ground_truth_labels group by label";
 
     private final JdbcTemplate jdbc;
 
@@ -54,14 +48,5 @@ public class GroundTruthLabelRepository {
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
-    }
-
-    /** Per-class counts across the whole corpus; classes with no rows are omitted. */
-    public Map<GroundTruthLabel, Long> countsByLabel() {
-        Map<GroundTruthLabel, Long> counts = new EnumMap<>(GroundTruthLabel.class);
-        RowCallbackHandler accumulate = rs ->
-                counts.put(GroundTruthLabel.fromDbValue(rs.getString("label")), rs.getLong("n"));
-        jdbc.query(COUNT_BY_LABEL_SQL, accumulate);
-        return counts;
     }
 }

@@ -1,5 +1,6 @@
 package com.antispam.decision.calibration;
 
+import com.antispam.decision.Probabilities;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -137,7 +138,7 @@ public final class IsotonicCalibrator implements ProbabilityCalibrator {
         for (Block pool : pooled) {
             // Each pooled block covers `span` consecutive thresholds, all sharing its mean.
             for (int k = 0; k < pool.span(); k++) {
-                calibrated[idx] = clampUnit(pool.mean());
+                calibrated[idx] = Probabilities.clampUnit(pool.mean());
                 idx++;
             }
         }
@@ -145,13 +146,6 @@ public final class IsotonicCalibrator implements ProbabilityCalibrator {
             thresholds[j] = uniqueThresholds.get(j).x();
         }
         return new IsotonicCalibrator(thresholds, calibrated);
-    }
-
-    private static double clampUnit(double v) {
-        if (v < 0.0) {
-            return 0.0;
-        }
-        return v > 1.0 ? 1.0 : v;
     }
 
     /**

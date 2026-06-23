@@ -15,24 +15,24 @@ import { cn } from "@/lib/utils";
  * Reduced-motion collapses all of this to an instant appearance.
  */
 export function ResultCard({ result }: { result: AnalyzeResponse }) {
-  const reduce = useReducedMotion();
+  const reduceMotion = useReducedMotion();
   const tier = TIERS[result.tier];
 
   // Time-based, eased entrance (not per-frame). Disabled under reduced-motion.
   const container: Variants = {
-    hidden: { opacity: 0, y: reduce ? 0 : 12, scale: reduce ? 1 : 0.98 },
+    hidden: { opacity: 0, y: reduceMotion ? 0 : 12, scale: reduceMotion ? 1 : 0.98 },
     show: {
       opacity: 1,
       y: 0,
       scale: 1,
-      transition: reduce
+      transition: reduceMotion
         ? { duration: 0 }
         : { duration: 0.28, ease: [0.05, 0.7, 0.1, 1], when: "beforeChildren", staggerChildren: 0.05 },
     },
   };
   const item: Variants = {
-    hidden: { opacity: 0, y: reduce ? 0 : 6 },
-    show: { opacity: 1, y: 0, transition: { duration: reduce ? 0 : 0.2, ease: "easeOut" } },
+    hidden: { opacity: 0, y: reduceMotion ? 0 : 6 },
+    show: { opacity: 1, y: 0, transition: { duration: reduceMotion ? 0 : 0.2, ease: "easeOut" } },
   };
 
   return (

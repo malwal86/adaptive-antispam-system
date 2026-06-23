@@ -17,11 +17,6 @@ public record RoutingDecision(List<RoutingReason> reasons) {
         reasons = List.copyOf(reasons);
     }
 
-    /** The no-escalation outcome: the fast path decides this email. */
-    public static RoutingDecision fastPath() {
-        return new RoutingDecision(List.of());
-    }
-
     /** Whether this email escalates to the LLM (any predicate fired). */
     public boolean routed() {
         return !reasons.isEmpty();

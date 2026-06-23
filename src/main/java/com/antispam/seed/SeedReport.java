@@ -25,9 +25,4 @@ public record SeedReport(
         loadedByLabel = Map.copyOf(loadedByLabel);
         datasets = Set.copyOf(datasets);
     }
-
-    /** Total messages seen this run, whether newly loaded or skipped as duplicates. */
-    public int totalProcessed() {
-        return totalLoaded + duplicatesSkipped;
-    }
 }
