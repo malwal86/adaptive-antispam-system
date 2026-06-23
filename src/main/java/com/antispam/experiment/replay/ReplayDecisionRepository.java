@@ -43,6 +43,22 @@ public class ReplayDecisionRepository {
             order by created_at, email_id
             """;
 
+    // The A/B harness's grading join (story 09.04): a run's decisions paired with each email's
+    // ground truth. An inner join means only labeled emails contribute — an unlabeled email has no
+    // truth to grade against, so it is excluded rather than counted as a miss. Ordered by email so
+    // the labeled row set is deterministic across re-runs.
+    private static final String SELECT_LABELED_BY_RUN_SQL = """
+            select r.email_id       as email_id,
+                   r.decision       as decision,
+                   r.route_used     as route_used,
+                   r.policy_version as policy_version,
+                   g.label          as label
+            from replay_decisions r
+            join ground_truth_labels g on g.email_id = r.email_id
+            where r.run_id = ?
+            order by r.email_id
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Autowired
@@ -84,6 +100,15 @@ public class ReplayDecisionRepository {
         return jdbc.query(SELECT_BY_RUN_SQL, REPLAY_DECISION_MAPPER, runId);
     }
 
+    /**
+     * A run's decisions joined to ground truth, for the A/B harness (story 09.04). Only labeled
+     * emails are returned (inner join), email-ordered, carrying just the tier, route, policy version,
+     * and label the metric computation grades — never the enforced live state.
+     */
+    public List<LabeledReplayDecision> findLabeledByRunId(UUID runId) {
+        return jdbc.query(SELECT_LABELED_BY_RUN_SQL, LABELED_DECISION_MAPPER, runId);
+    }
+
     private static final RowMapper<ReplayDecision> REPLAY_DECISION_MAPPER = (rs, rowNum) -> {
         OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
         double posterior = rs.getDouble("posterior");
@@ -102,6 +127,14 @@ public class ReplayDecisionRepository {
                 scored,
                 createdAt == null ? null : createdAt.toInstant());
     };
+
+    private static final RowMapper<LabeledReplayDecision> LABELED_DECISION_MAPPER = (rs, rowNum) ->
+            new LabeledReplayDecision(
+                    rs.getObject("email_id", UUID.class),
+                    Decision.valueOf(rs.getString("decision")),
+                    RouteUsed.valueOf(rs.getString("route_used")),
+                    rs.getString("policy_version"),
+                    com.antispam.seed.GroundTruthLabel.fromDbValue(rs.getString("label")));
 
     private static <E> List<E> names(Array array, java.util.function.Function<String, E> parse)
             throws java.sql.SQLException {
