@@ -17,7 +17,6 @@ import com.antispam.decision.routing.RoutingReason;
 import com.antispam.ingest.Email;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -60,7 +59,7 @@ class PolicyScorerTest {
     @Test
     void tiers_the_posterior_under_the_policy_it_is_handed_not_the_active_one() {
         when(decisionService.evaluate(email)).thenReturn(modelOutcome());
-        when(fusionService.fuse(any(), any())).thenReturn(Optional.of(posterior(0.60)));
+        when(fusionService.fuseIfApplicable(any(), any())).thenReturn(posterior(0.60));
 
         ScoredDecision scored = scorer().score(email, LENIENT);
 
@@ -72,7 +71,7 @@ class PolicyScorerTest {
     @Test
     void switching_the_policy_changes_the_tier_for_a_fixed_email() {
         when(decisionService.evaluate(email)).thenReturn(modelOutcome());
-        when(fusionService.fuse(any(), any())).thenReturn(Optional.of(posterior(0.60)));
+        when(fusionService.fuseIfApplicable(any(), any())).thenReturn(posterior(0.60));
 
         Decision underLenient = scorer().score(email, LENIENT).decision();
         Decision underStrict = scorer().score(email, STRICT).decision();
@@ -84,7 +83,7 @@ class PolicyScorerTest {
     @Test
     void scores_the_same_email_and_policy_identically_each_time() {
         when(decisionService.evaluate(email)).thenReturn(modelOutcome());
-        when(fusionService.fuse(any(), any())).thenReturn(Optional.of(posterior(0.60)));
+        when(fusionService.fuseIfApplicable(any(), any())).thenReturn(posterior(0.60));
 
         ScoredDecision first = scorer().score(email, LENIENT);
         ScoredDecision second = scorer().score(email, LENIENT);
@@ -110,8 +109,8 @@ class PolicyScorerTest {
     @Test
     void leaves_a_model_decision_provisional_when_the_score_was_not_fused() {
         when(decisionService.evaluate(email)).thenReturn(modelOutcome());
-        // No calibration installed → fusion declines.
-        when(fusionService.fuse(any(), any())).thenReturn(Optional.empty());
+        // No calibration installed → fusion declines (fuseIfApplicable yields no fused score).
+        when(fusionService.fuseIfApplicable(any(), any())).thenReturn(null);
 
         ScoredDecision scored = scorer().score(email, LENIENT);
 
@@ -126,7 +125,7 @@ class PolicyScorerTest {
         // 0.65 is a clear WARN far from every boundary with no sender uncertainty.
         DecisionOutcome lowConfidence = modelOutcome(new ModelScores(0.4, 0.2, "bootstrap-v1", 0.55));
         when(decisionService.evaluate(email)).thenReturn(lowConfidence);
-        when(fusionService.fuse(any(), any())).thenReturn(Optional.of(posterior(0.65)));
+        when(fusionService.fuseIfApplicable(any(), any())).thenReturn(posterior(0.65));
 
         ScoredDecision scored = scorer().score(email, LENIENT);
 
@@ -139,7 +138,7 @@ class PolicyScorerTest {
     @Test
     void keeps_a_confident_mid_tier_decision_on_the_fast_path() {
         when(decisionService.evaluate(email)).thenReturn(modelOutcome());
-        when(fusionService.fuse(any(), any())).thenReturn(Optional.of(posterior(0.65)));
+        when(fusionService.fuseIfApplicable(any(), any())).thenReturn(posterior(0.65));
 
         ScoredDecision scored = scorer().score(email, LENIENT);
 

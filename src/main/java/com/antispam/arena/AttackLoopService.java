@@ -3,9 +3,6 @@ package com.antispam.arena;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.decision.policy.PolicyScorer;
-import com.antispam.decision.policy.ScoredDecision;
-import com.antispam.experiment.ExperimentContext;
-import com.antispam.ingest.Email;
 import com.antispam.ingest.EmailRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -182,7 +179,7 @@ public class AttackLoopService {
             // A) or a wrongly-blocked good mail (Track B) is durable and queryable. Whether that counts
             // as the attacker winning depends on the variant's track: abuse wins by delivery, legit by
             // being withheld.
-            boolean delivered = defenderDelivers(variant, defender);
+            boolean delivered = VariantScorer.delivers(emails, scorer, variant, defender);
             variants.recordDefenderOutcome(variant.id(), delivered);
             Track track = variant.track();
             boolean beatDefender = track.attackerWon(delivered);
@@ -198,20 +195,6 @@ public class AttackLoopService {
                     target.seedEmailId(), target.strategy(), target.track(), runId, generation);
         }
         return mutations.mutateVariant(target.parentVariant(), target.strategy(), runId, generation);
-    }
-
-    /**
-     * Whether the fixed defender would deliver this variant to the inbox. Scored read-only under the
-     * captured policy, so the experiment cannot write live state; delivery is the verdict
-     * {@link com.antispam.decision.Decision#delivers() delivering} it (allow or warn). What delivery
-     * <em>means</em> for the attacker depends on the variant's track — a bypass for abuse, the absence
-     * of a false positive for legit mail — but that interpretation lives in {@link Track}, not here.
-     */
-    private boolean defenderDelivers(AdversarialEmail variant, Policy defender) {
-        Email email = emails.findById(variant.variantEmailId()).orElseThrow(() ->
-                new IllegalStateException("variant email vanished: " + variant.variantEmailId()));
-        ScoredDecision scored = ExperimentContext.callReadOnly(() -> scorer.score(email, defender));
-        return scored.decision().delivers();
     }
 
     private AdversarialRun finish(AdversarialRun run, Tally tally, RunBudget budget, RunStatus status) {

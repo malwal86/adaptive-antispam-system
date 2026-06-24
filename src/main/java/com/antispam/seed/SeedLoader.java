@@ -6,12 +6,12 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -120,20 +120,24 @@ public class SeedLoader {
     }
 
     private static List<Path> subdirectories(Path dir) {
-        try (Stream<Path> entries = Files.list(dir)) {
-            return entries.filter(Files::isDirectory).sorted().toList();
-        } catch (IOException e) {
-            throw new SeedException("could not list seed directory: " + dir, e);
-        }
+        return listing(dir, Files::isDirectory);
     }
 
     private static List<Path> files(Path dir) {
+        try {
+            return listing(dir, Files::isRegularFile);
+        } catch (UncheckedIOException e) {
+            // A lazy Files.list stream can surface an IO error wrapped as UncheckedIOException at the
+            // terminal .toList(); unwrap it to the same SeedException the eager IOException path produces.
+            throw new SeedException("could not list seed directory: " + dir, e.getCause());
+        }
+    }
+
+    private static List<Path> listing(Path dir, Predicate<Path> keep) {
         try (Stream<Path> entries = Files.list(dir)) {
-            return entries.filter(Files::isRegularFile).sorted(Comparator.naturalOrder()).toList();
+            return entries.filter(keep).sorted().toList();
         } catch (IOException e) {
             throw new SeedException("could not list seed directory: " + dir, e);
-        } catch (UncheckedIOException e) {
-            throw new SeedException("could not list seed directory: " + dir, e.getCause());
         }
     }
 }

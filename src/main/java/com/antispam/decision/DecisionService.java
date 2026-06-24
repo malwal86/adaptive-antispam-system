@@ -122,7 +122,7 @@ public class DecisionService {
      */
     public Classification decide(Email email) {
         DecisionOutcome outcome = evaluate(email);
-        FusedScore fused = fuseIfApplicable(email, outcome);
+        FusedScore fused = fusionService.fuseIfApplicable(email, outcome);
 
         // Live shadow scoring (story 09.02): score the same model output under the configured shadow
         // policy and record the diff, off the request thread. Logged-only and isolated — it never
@@ -185,18 +185,5 @@ public class DecisionService {
                 llm == null || llm.degraded() ? null : llm.verdict().verdict(),
                 llm == null ? null : llm.degraded(), llmCostUsd);
         return classification;
-    }
-
-    /**
-     * Fuses the model's calibrated score with sender reputation for a model-route
-     * decision, or {@code null} when fusion does not apply: a hard-rule decision carries
-     * no model score, and a model decision is fused only if a calibration is installed
-     * (fusion requires a calibrated probability — story 04.04 AC 3).
-     */
-    private FusedScore fuseIfApplicable(Email email, DecisionOutcome outcome) {
-        if (outcome.scores() == null) {
-            return null;
-        }
-        return fusionService.fuse(email, outcome.scores()).orElse(null);
     }
 }

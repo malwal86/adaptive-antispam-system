@@ -3,9 +3,7 @@ package com.antispam.arena;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.decision.policy.PolicyScorer;
-import com.antispam.decision.policy.ScoredDecision;
 import com.antispam.experiment.ExperimentContext;
-import com.antispam.ingest.Email;
 import com.antispam.ingest.EmailRepository;
 import com.antispam.retrain.RetrainLabel;
 import com.antispam.retrain.RetrainLabelRepository;
@@ -123,7 +121,7 @@ public class BypassMeasurementService {
                 continue; // baseline comparison is the recall (Track A) number — "danger missed".
             }
             abuseScored++;
-            if (baselineDelivers(variant, baseline)) {
+            if (VariantScorer.delivers(emails, scorer, variant, baseline)) {
                 abuseBypassed++;
             }
         }
@@ -146,14 +144,6 @@ public class BypassMeasurementService {
                     configured);
         }
         return policies.findOldest();
-    }
-
-    /** Whether the fixed baseline would deliver this variant to the inbox — scored read-only. */
-    private boolean baselineDelivers(AdversarialEmail variant, Policy baseline) {
-        Email email = emails.findById(variant.variantEmailId()).orElseThrow(() ->
-                new IllegalStateException("variant email vanished: " + variant.variantEmailId()));
-        ScoredDecision scored = ExperimentContext.callReadOnly(() -> scorer.score(email, baseline));
-        return scored.decision().delivers();
     }
 
     /**
