@@ -347,6 +347,16 @@ antispam:
     # the LLM disabled there is no async path, so this is unused. Tunable without a redeploy.
     quarantine:
       sla: ${ANTISPAM_LLM_SLA:30s}
+  # Adversarial arena attacker (story 08.01). The red-team perturbs REAL seed spam via a configurable
+  # attacker model (PRD §Subsystem 6 attacker_model); the model name is a config value recorded on
+  # every variant, not a code constant, so the regime is swappable per run. Off by default for the
+  # same reason the LLM fallback is: local dev and the full-context tests stay provider-free unless
+  # explicitly enabled. When enabled the attacker shares the Spring AI context but requests its own
+  # model per call, so it can run a stronger model than the defender's fallback. Tunable without a
+  # redeploy.
+  arena:
+    enabled: ${ANTISPAM_ARENA_ENABLED:false}
+    attacker-model: ${ANTISPAM_ARENA_ATTACKER_MODEL:gpt-4o-mini}
   seed:
     enabled: false
     corpus-dir: seed-corpus

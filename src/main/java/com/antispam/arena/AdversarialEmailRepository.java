@@ -1,0 +1,114 @@
+package com.antispam.arena;
+
+import com.antispam.seed.GroundTruthLabel;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Access to the {@code adversarial_emails} lineage table (story 08.01). Append-only by intent: a
+ * variant is minted once and logged once, so there is no update or delete. The single-variant-per-
+ * email uniqueness lives in the schema; this repository surfaces it as an idempotent save so a
+ * re-mint of identical bytes does not create a second lineage row.
+ */
+@Repository
+public class AdversarialEmailRepository {
+
+    private static final String INSERT_SQL = """
+            insert into adversarial_emails (
+                id, variant_email_id, seed_email_id, parent_variant_id,
+                mutation_strategy, ground_truth_label, attacker_model)
+            values (?, ?, ?, ?, ?, ?, ?)
+            on conflict (variant_email_id) do nothing
+            returning id, variant_email_id, seed_email_id, parent_variant_id,
+                      mutation_strategy, ground_truth_label, attacker_model, created_at
+            """;
+
+    private static final String SELECT_BY_ID_SQL = """
+            select id, variant_email_id, seed_email_id, parent_variant_id,
+                   mutation_strategy, ground_truth_label, attacker_model, created_at
+            from adversarial_emails where id = ?
+            """;
+
+    private static final String SELECT_BY_SEED_SQL = """
+            select id, variant_email_id, seed_email_id, parent_variant_id,
+                   mutation_strategy, ground_truth_label, attacker_model, created_at
+            from adversarial_emails where seed_email_id = ?
+            order by created_at, id
+            """;
+
+    private static final String SELECT_BY_VARIANT_SQL = """
+            select id, variant_email_id, seed_email_id, parent_variant_id,
+                   mutation_strategy, ground_truth_label, attacker_model, created_at
+            from adversarial_emails where variant_email_id = ?
+            """;
+
+    private final JdbcTemplate jdbc;
+
+    @Autowired
+    public AdversarialEmailRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    /**
+     * Logs a new variant. Idempotent on {@code variantEmailId}: if that email is already recorded as
+     * a variant, the existing lineage row is returned unchanged rather than a second one written.
+     *
+     * @param parentVariantId the parent variant for an iterative attack, or null when mutated
+     *                        directly from the seed
+     */
+    public AdversarialEmail save(UUID variantEmailId, UUID seedEmailId, UUID parentVariantId,
+            MutationStrategy strategy, GroundTruthLabel label, String attackerModel) {
+        UUID id = UUID.randomUUID();
+        List<AdversarialEmail> inserted = jdbc.query(INSERT_SQL, ADVERSARIAL_EMAIL_MAPPER,
+                id, variantEmailId, seedEmailId, parentVariantId,
+                strategy.dbValue(), label.dbValue(), attackerModel);
+        if (!inserted.isEmpty()) {
+            return inserted.get(0);
+        }
+        // Lost the race / already logged: return the row that owns this variant email.
+        return findByVariantEmailId(variantEmailId).orElseThrow(() -> new IllegalStateException(
+                "adversarial variant insert conflicted but no existing row found for " + variantEmailId));
+    }
+
+    public Optional<AdversarialEmail> findById(UUID id) {
+        try {
+            return Optional.ofNullable(jdbc.queryForObject(SELECT_BY_ID_SQL, ADVERSARIAL_EMAIL_MAPPER, id));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Every variant descended from {@code seedEmailId}, in mint order — one attack family. */
+    public List<AdversarialEmail> findBySeed(UUID seedEmailId) {
+        return jdbc.query(SELECT_BY_SEED_SQL, ADVERSARIAL_EMAIL_MAPPER, seedEmailId);
+    }
+
+    private Optional<AdversarialEmail> findByVariantEmailId(UUID variantEmailId) {
+        try {
+            return Optional.ofNullable(
+                    jdbc.queryForObject(SELECT_BY_VARIANT_SQL, ADVERSARIAL_EMAIL_MAPPER, variantEmailId));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static final RowMapper<AdversarialEmail> ADVERSARIAL_EMAIL_MAPPER = (rs, rowNum) -> {
+        OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
+        return new AdversarialEmail(
+                rs.getObject("id", UUID.class),
+                rs.getObject("variant_email_id", UUID.class),
+                rs.getObject("seed_email_id", UUID.class),
+                rs.getObject("parent_variant_id", UUID.class),
+                MutationStrategy.fromDbValue(rs.getString("mutation_strategy")),
+                GroundTruthLabel.fromDbValue(rs.getString("ground_truth_label")),
+                rs.getString("attacker_model"),
+                createdAt == null ? null : createdAt.toInstant());
+    };
+}

@@ -43,17 +43,8 @@ public class IngestService {
      * @throws IllegalArgumentException if {@code rawContent} is null or empty
      */
     public IngestResult ingest(byte[] rawContent, String source) {
-        if (rawContent == null || rawContent.length == 0) {
-            throw new IllegalArgumentException("raw email content must not be empty");
-        }
-        byte[] contentHash = sha256(rawContent);
-        ParsedEmail metadata = parser.parse(rawContent);
-        IngestResult result = repository.save(rawContent, contentHash, metadata, normalizeSource(source));
-        // Audit log: the sender is masked and the body is never logged — only the
-        // content hash (non-PII) identifies the message. See com.antispam.privacy.
-        log.info("ingested email id={} source={} duplicate={} sender={} hash={}",
-                result.emailId(), result.source(), result.duplicate(),
-                Redaction.maskAddress(metadata.sender()), result.contentHashHex());
+        ParsedEmail metadata = parser.parse(requireContent(rawContent));
+        IngestResult result = persist(rawContent, metadata, source);
         // Publish onto the event spine only for a genuinely new email: the persist
         // has committed (this is the transactional-after-commit point), and a
         // duplicate's event was already emitted on first ingest, so skipping it
@@ -62,6 +53,41 @@ public class IngestService {
             publisher.publish(RawEmailEvent.of(result, metadata));
         }
         return result;
+    }
+
+    /**
+     * Persists a canonical record exactly as {@link #ingest} does but <b>without</b> publishing it
+     * onto the live event spine — no feature extraction, no reputation accrual, no live decision.
+     * This is the entry point for experiment-scoped producers (the adversarial arena, story 08.01):
+     * a generated variant must become an ordinary {@code emails} row so it can be scored through the
+     * same pipeline as real mail, yet it must not perturb live state the way a real arrival would.
+     * Scoring then happens read-only via {@link com.antispam.decision.policy.PolicyScorer}, keeping
+     * the side-effect isolation the arena depends on (story 09.03).
+     *
+     * @param source ingest provenance; experiment producers pass their own (e.g. {@code adversarial})
+     * @throws IllegalArgumentException if {@code rawContent} is null or empty
+     */
+    public IngestResult ingestOffSpine(byte[] rawContent, String source) {
+        ParsedEmail metadata = parser.parse(requireContent(rawContent));
+        return persist(rawContent, metadata, source);
+    }
+
+    private IngestResult persist(byte[] rawContent, ParsedEmail metadata, String source) {
+        byte[] contentHash = sha256(rawContent);
+        IngestResult result = repository.save(rawContent, contentHash, metadata, normalizeSource(source));
+        // Audit log: the sender is masked and the body is never logged — only the
+        // content hash (non-PII) identifies the message. See com.antispam.privacy.
+        log.info("ingested email id={} source={} duplicate={} sender={} hash={}",
+                result.emailId(), result.source(), result.duplicate(),
+                Redaction.maskAddress(metadata.sender()), result.contentHashHex());
+        return result;
+    }
+
+    private static byte[] requireContent(byte[] rawContent) {
+        if (rawContent == null || rawContent.length == 0) {
+            throw new IllegalArgumentException("raw email content must not be empty");
+        }
+        return rawContent;
     }
 
     public Optional<Email> findById(UUID id) {
