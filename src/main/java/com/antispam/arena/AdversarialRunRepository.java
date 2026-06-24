@@ -34,20 +34,23 @@ public class AdversarialRunRepository {
                 id, attacker_model, defender_model, defender_policy_version,
                 target_bypass_rate, generation_cap, budget_usd, status)
             values (?, ?, ?, ?, ?, ?, ?, 'running')
-            returning """ + COLUMNS;
+            returning
+            """ + COLUMNS;
 
     private static final String COMPLETE_SQL = """
             update adversarial_runs
                set actual_bypass_rate = ?, precision_fp_rate = ?, spent_usd = ?, generations_run = ?,
                    status = ?, completed_at = now()
              where id = ?
-            returning """ + COLUMNS;
+            returning
+            """ + COLUMNS;
 
     private static final String RECORD_BASELINE_SQL = """
             update adversarial_runs
                set baseline_policy_version = ?, baseline_bypass_rate = ?
              where id = ?
-            returning """ + COLUMNS;
+            returning
+            """ + COLUMNS;
 
     private static final String SELECT_BY_ID_SQL =
             "select " + COLUMNS + " from adversarial_runs where id = ?";
@@ -57,7 +60,8 @@ public class AdversarialRunRepository {
     // partial state would be misleading on a trend line.
     private static final String SELECT_RECENT_TERMINAL_SQL = "select " + COLUMNS + """
              from (
-                select """ + COLUMNS + """
+                select
+            """ + COLUMNS + """
                   from adversarial_runs
                  where status in ('completed', 'budget_exhausted')
                  order by created_at desc, id desc

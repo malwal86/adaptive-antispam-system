@@ -32,7 +32,8 @@ public class AdversarialEmailRepository {
                 mutation_strategy, ground_truth_label, attacker_model, run_id, generation)
             values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (variant_email_id) do nothing
-            returning """ + COLUMNS;
+            returning
+            """ + COLUMNS;
 
     private static final String SELECT_BY_ID_SQL =
             "select " + COLUMNS + " from adversarial_emails where id = ?";
