@@ -22,7 +22,8 @@ public class AdversarialEmailRepository {
 
     private static final String COLUMNS = """
             id, variant_email_id, seed_email_id, parent_variant_id,
-            mutation_strategy, ground_truth_label, attacker_model, run_id, generation, created_at
+            mutation_strategy, ground_truth_label, attacker_model, run_id, generation,
+            defender_delivered, created_at
             """;
 
     private static final String INSERT_SQL = """
@@ -48,6 +49,16 @@ public class AdversarialEmailRepository {
              from adversarial_emails where run_id = ?
             order by generation, created_at, id
             """;
+
+    /** The Track B precision-floor corpus: legit variants the fixed defender wrongly blocked (story 08.02b). */
+    private static final String SELECT_BLOCKED_HAM_BY_RUN_SQL = "select " + COLUMNS + """
+             from adversarial_emails
+            where run_id = ? and ground_truth_label = 'ham' and defender_delivered = false
+            order by generation, created_at, id
+            """;
+
+    private static final String RECORD_OUTCOME_SQL =
+            "update adversarial_emails set defender_delivered = ? where id = ?";
 
     private final JdbcTemplate jdbc;
 
@@ -99,6 +110,25 @@ public class AdversarialEmailRepository {
         return jdbc.query(SELECT_BY_RUN_SQL, ADVERSARIAL_EMAIL_MAPPER, runId);
     }
 
+    /**
+     * Records the fixed defender's delivery verdict on a scored variant (story 08.02b): {@code true}
+     * if it reached the inbox, {@code false} if it was withheld. Called once per variant after the run
+     * scores it, which is what makes a Track A bypass / Track B false positive durable and queryable
+     * (e.g. {@link #findWronglyBlockedHam}).
+     */
+    public void recordDefenderOutcome(UUID variantId, boolean delivered) {
+        jdbc.update(RECORD_OUTCOME_SQL, delivered, variantId);
+    }
+
+    /**
+     * The legit (ham) variants a run's fixed defender <em>wrongly blocked</em> — good mail withheld
+     * under adversarial pressure (story 08.02b, AC 4). These are captured, still labeled ham with
+     * arena provenance, as the precision-floor retrain corpus (Epic 10/11).
+     */
+    public List<AdversarialEmail> findWronglyBlockedHam(UUID runId) {
+        return jdbc.query(SELECT_BLOCKED_HAM_BY_RUN_SQL, ADVERSARIAL_EMAIL_MAPPER, runId);
+    }
+
     private Optional<AdversarialEmail> findByVariantEmailId(UUID variantEmailId) {
         try {
             return Optional.ofNullable(
@@ -120,6 +150,7 @@ public class AdversarialEmailRepository {
                 rs.getString("attacker_model"),
                 rs.getObject("run_id", UUID.class),
                 rs.getObject("generation", Integer.class),
+                rs.getObject("defender_delivered", Boolean.class),
                 createdAt == null ? null : createdAt.toInstant());
     };
 }

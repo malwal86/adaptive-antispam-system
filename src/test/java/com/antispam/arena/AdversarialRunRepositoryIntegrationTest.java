@@ -32,6 +32,7 @@ class AdversarialRunRepositoryIntegrationTest extends AbstractPostgresIntegratio
         // Opens running: no result yet, nothing consumed.
         assertThat(run.status()).isEqualTo(RunStatus.RUNNING);
         assertThat(run.actualBypassRate()).isNull();
+        assertThat(run.precisionFpRate()).isNull();
         assertThat(run.generationsRun()).isZero();
         assertThat(run.spentUsd()).isEqualByComparingTo("0");
         assertThat(run.completedAt()).isNull();
@@ -43,11 +44,13 @@ class AdversarialRunRepositoryIntegrationTest extends AbstractPostgresIntegratio
         AdversarialRun started = runs.start("gpt-4o", "model-7", "pol-active",
                 0.4, 5, new BigDecimal("2.00"));
 
-        AdversarialRun done = runs.complete(started.id(), 0.6, new BigDecimal("0.18"), 4,
+        AdversarialRun done = runs.complete(started.id(), 0.6, 0.2, new BigDecimal("0.18"), 4,
                 RunStatus.BUDGET_EXHAUSTED);
 
         assertThat(done.status()).isEqualTo(RunStatus.BUDGET_EXHAUSTED);
         assertThat(done.actualBypassRate()).isEqualTo(0.6);
+        // Two-track: recall and precision recorded separately (story 08.02b).
+        assertThat(done.precisionFpRate()).isEqualTo(0.2);
         assertThat(done.generationsRun()).isEqualTo(4);
         assertThat(done.spentUsd()).isEqualByComparingTo("0.18");
         assertThat(done.completedAt()).isNotNull();

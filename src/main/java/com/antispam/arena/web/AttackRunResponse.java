@@ -15,7 +15,9 @@ import java.util.UUID;
  * @param defenderModel         the model the defender's active policy is calibrated for
  * @param defenderPolicyVersion the policy held fixed for the whole run
  * @param targetBypassRate      the attacker's goal bypass rate
- * @param actualBypassRate      the achieved bypass rate, or null while running
+ * @param actualBypassRate      the Track A recall bypass rate, or null while running / if no Track A ran
+ * @param precisionFpRate       the Track B precision false-positive rate (story 08.02b), or null while
+ *                              running / if no Track B ran
  * @param generationCap         the hard generation cap (1–5)
  * @param generationsRun        how many generations actually ran
  * @param budgetUsd             the hard spend ceiling
@@ -31,6 +33,7 @@ public record AttackRunResponse(
         String defenderPolicyVersion,
         double targetBypassRate,
         Double actualBypassRate,
+        Double precisionFpRate,
         int generationCap,
         int generationsRun,
         BigDecimal budgetUsd,
@@ -47,6 +50,7 @@ public record AttackRunResponse(
                 run.defenderPolicyVersion(),
                 run.targetBypassRate(),
                 run.actualBypassRate(),
+                run.precisionFpRate(),
                 run.generationCap(),
                 run.generationsRun(),
                 run.budgetUsd(),

@@ -20,32 +20,28 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AdversarialRunRepository {
 
+    private static final String COLUMNS = """
+            id, attacker_model, defender_model, defender_policy_version,
+            target_bypass_rate, actual_bypass_rate, precision_fp_rate, generation_cap, budget_usd,
+            spent_usd, generations_run, status, created_at, completed_at
+            """;
+
     private static final String INSERT_SQL = """
             insert into adversarial_runs (
                 id, attacker_model, defender_model, defender_policy_version,
                 target_bypass_rate, generation_cap, budget_usd, status)
             values (?, ?, ?, ?, ?, ?, ?, 'running')
-            returning id, attacker_model, defender_model, defender_policy_version,
-                      target_bypass_rate, actual_bypass_rate, generation_cap, budget_usd,
-                      spent_usd, generations_run, status, created_at, completed_at
-            """;
+            returning """ + COLUMNS;
 
     private static final String COMPLETE_SQL = """
             update adversarial_runs
-               set actual_bypass_rate = ?, spent_usd = ?, generations_run = ?,
+               set actual_bypass_rate = ?, precision_fp_rate = ?, spent_usd = ?, generations_run = ?,
                    status = ?, completed_at = now()
              where id = ?
-            returning id, attacker_model, defender_model, defender_policy_version,
-                      target_bypass_rate, actual_bypass_rate, generation_cap, budget_usd,
-                      spent_usd, generations_run, status, created_at, completed_at
-            """;
+            returning """ + COLUMNS;
 
-    private static final String SELECT_BY_ID_SQL = """
-            select id, attacker_model, defender_model, defender_policy_version,
-                   target_bypass_rate, actual_bypass_rate, generation_cap, budget_usd,
-                   spent_usd, generations_run, status, created_at, completed_at
-            from adversarial_runs where id = ?
-            """;
+    private static final String SELECT_BY_ID_SQL =
+            "select " + COLUMNS + " from adversarial_runs where id = ?";
 
     private final JdbcTemplate jdbc;
 
@@ -72,13 +68,17 @@ public class AdversarialRunRepository {
     /**
      * Finalizes a run with its terminal outcome. Called for every run that left {@code running},
      * including a budget-exhausted one (partial results) and a failed one — so no run is left dangling.
+     * The two rates are reported separately (story 08.02b, AC 3); each is null when its track did not run.
      *
-     * @param actualBypassRate bypassing variants / variants scored across the run, in [0,1]
+     * @param actualBypassRate Track A recall: abuse variants delivered / abuse variants scored, in
+     *                         [0,1]; null if no Track A ran
+     * @param precisionFpRate  Track B precision: legit variants wrongly blocked / legit variants scored,
+     *                         in [0,1]; null if no Track B ran
      */
-    public AdversarialRun complete(UUID runId, double actualBypassRate, BigDecimal spentUsd,
-            int generationsRun, RunStatus status) {
+    public AdversarialRun complete(UUID runId, Double actualBypassRate, Double precisionFpRate,
+            BigDecimal spentUsd, int generationsRun, RunStatus status) {
         return jdbc.queryForObject(COMPLETE_SQL, RUN_MAPPER,
-                actualBypassRate, spentUsd, generationsRun, status.dbValue(), runId);
+                actualBypassRate, precisionFpRate, spentUsd, generationsRun, status.dbValue(), runId);
     }
 
     public Optional<AdversarialRun> findById(UUID id) {
@@ -93,6 +93,7 @@ public class AdversarialRunRepository {
         OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
         OffsetDateTime completedAt = rs.getObject("completed_at", OffsetDateTime.class);
         Double actual = rs.getObject("actual_bypass_rate", Double.class);
+        Double precisionFp = rs.getObject("precision_fp_rate", Double.class);
         return new AdversarialRun(
                 rs.getObject("id", UUID.class),
                 rs.getString("attacker_model"),
@@ -100,6 +101,7 @@ public class AdversarialRunRepository {
                 rs.getString("defender_policy_version"),
                 rs.getDouble("target_bypass_rate"),
                 actual,
+                precisionFp,
                 rs.getInt("generation_cap"),
                 rs.getBigDecimal("budget_usd"),
                 rs.getBigDecimal("spent_usd"),
