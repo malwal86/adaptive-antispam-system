@@ -1,0 +1,80 @@
+name: Retrain candidate
+
+# "CI/CD for ML" (PRD §Subsystem 9 step 2, story 10.02): on a schedule (and on demand),
+# pull the labeled export, train in Python → export ONNX → calibrate, and stage a
+# versioned *candidate* artifact. This produces a candidate only — it never activates a
+# model; promotion is gated separately (10.03 precision floor, 10.04 flag flip). A broken
+# training run fails loudly and uploads no candidate.
+on:
+  schedule:
+    # Nightly at 04:17 UTC — an off-peak, non-round time so it doesn't stampede the hour.
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      min_samples:
+        description: 'Minimum labeled examples required to train (a guard against a thin/broken export)'
+        required: false
+        default: '40'
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: Train → ONNX → calibrate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the pinned ML toolchain
+        run: pip install --no-cache-dir -r ml/requirements.txt
+
+      - name: Assemble the trainable labeled export
+        env:
+          API: ${{ vars.LIVE_API_URL }}
+        run: |
+          set -euo pipefail
+          if [ -n "${API:-}" ]; then
+            echo "Fetching the labeled export + features from $API"
+            python ml/fetch_training_data.py --api "$API" --out training-export.json
+          else
+            # No live API configured (e.g. scheduled run without the variable set): fall back
+            # to the checked-in sample corpus so the nightly still proves the pipeline runs
+            # end-to-end and produces a candidate, unattended.
+            echo "LIVE_API_URL not set — using the checked-in sample corpus"
+            cp ml/fixtures/sample-training-export.json training-export.json
+          fi
+
+      - name: Train + calibrate the candidate
+        run: |
+          python ml/train_candidate.py \
+            --export training-export.json \
+            --out candidate \
+            --min-samples "${{ github.event.inputs.min_samples || '40' }}"
+
+      # Both staging steps run only on success, so a failed training run (above) leaves no
+      # candidate anywhere — no half-baked artifact (AC 4). The GitHub artifact is the
+      # always-available staging copy; Supabase Storage is the durable one the gate reads.
+      - name: Upload candidate artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-candidate
+          path: |
+            candidate/**
+            training-export.json
+          if-no-files-found: error
+
+      - name: Stage candidate to Supabase Storage (not activated)
+        if: success()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUCKET: ${{ vars.SUPABASE_MODELS_BUCKET }}
+          CANDIDATE_DIR: candidate
+        run: ./scripts/stage-candidate.sh
