@@ -19,6 +19,9 @@ import java.util.UUID;
  * @param strategy        the perturbation applied
  * @param label           the ground-truth class, preserved from the seed (spam stays spam)
  * @param attackerModel   the configured attacker model that minted the variant
+ * @param runId           the attack run this variant belongs to (story 08.02), or null for a
+ *                        standalone mutation (story 08.01)
+ * @param generation      the 1-based generation that minted it within the run, or null when standalone
  * @param createdAt       when the variant was logged
  */
 public record AdversarialEmail(
@@ -29,5 +32,7 @@ public record AdversarialEmail(
         MutationStrategy strategy,
         GroundTruthLabel label,
         String attackerModel,
+        UUID runId,
+        Integer generation,
         Instant createdAt) {
 }

@@ -357,6 +357,14 @@ antispam:
   arena:
     enabled: ${ANTISPAM_ARENA_ENABLED:false}
     attacker-model: ${ANTISPAM_ARENA_ATTACKER_MODEL:gpt-4o-mini}
+    # Bounded-loop defaults (story 08.02). generation-cap is the PRD's 3–5 hard bound on generations;
+    # budget-usd is the per-run spend ceiling that stops the loop like the LLM budget cap, and
+    # cost-per-mutation-usd is the modeled cost of one attacker call charged against it. A run may
+    # override the cap and budget per request; these are the out-of-the-box "even my red-team has a
+    # budget" defaults, tunable without a redeploy.
+    generation-cap: ${ANTISPAM_ARENA_GENERATION_CAP:3}
+    budget-usd: ${ANTISPAM_ARENA_BUDGET_USD:1.00}
+    cost-per-mutation-usd: ${ANTISPAM_ARENA_COST_PER_MUTATION_USD:0.01}
   seed:
     enabled: false
     corpus-dir: seed-corpus

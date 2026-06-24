@@ -51,7 +51,7 @@ class MutationServiceTest {
 
     private MutationService service() {
         return new MutationService(emails, labels, attacker, ingest, variants,
-                new ArenaProperties(true, "attacker-x"));
+                new ArenaProperties(true, "attacker-x", 3, null, null));
     }
 
     private static final UUID SEED_ID = UUID.randomUUID();
@@ -65,13 +65,14 @@ class MutationServiceTest {
         when(ingest.ingestOffSpine(any(), eq("adversarial")))
                 .thenReturn(new IngestResult(VARIANT_ID, "hash", false, "adversarial"));
         AdversarialEmail logged = adversarial(MutationStrategy.SYNONYM, GroundTruthLabel.SPAM);
-        when(variants.save(VARIANT_ID, SEED_ID, null, MutationStrategy.SYNONYM, GroundTruthLabel.SPAM, "attacker-x"))
-                .thenReturn(logged);
+        when(variants.save(VARIANT_ID, SEED_ID, null, MutationStrategy.SYNONYM, GroundTruthLabel.SPAM,
+                "attacker-x", null, null)).thenReturn(logged);
 
         AdversarialEmail result = service().mutate(SEED_ID, MutationStrategy.SYNONYM);
 
         assertThat(result).isEqualTo(logged);
-        verify(variants).save(VARIANT_ID, SEED_ID, null, MutationStrategy.SYNONYM, GroundTruthLabel.SPAM, "attacker-x");
+        verify(variants).save(VARIANT_ID, SEED_ID, null, MutationStrategy.SYNONYM, GroundTruthLabel.SPAM,
+                "attacker-x", null, null);
     }
 
     @Test
@@ -80,12 +81,13 @@ class MutationServiceTest {
         when(attacker.mutate(MutationStrategy.HOMOGLYPH, SEED_TEXT)).thenReturn("Subject: free mοney\n\nClick http://evil.test now");
         when(ingest.ingestOffSpine(any(), eq("adversarial")))
                 .thenReturn(new IngestResult(VARIANT_ID, "hash", false, "adversarial"));
-        when(variants.save(any(), any(), any(), any(), eq(GroundTruthLabel.PHISH), any()))
+        when(variants.save(any(), any(), any(), any(), eq(GroundTruthLabel.PHISH), any(), any(), any()))
                 .thenReturn(adversarial(MutationStrategy.HOMOGLYPH, GroundTruthLabel.PHISH));
 
         service().mutate(SEED_ID, MutationStrategy.HOMOGLYPH);
 
-        verify(variants).save(VARIANT_ID, SEED_ID, null, MutationStrategy.HOMOGLYPH, GroundTruthLabel.PHISH, "attacker-x");
+        verify(variants).save(VARIANT_ID, SEED_ID, null, MutationStrategy.HOMOGLYPH, GroundTruthLabel.PHISH,
+                "attacker-x", null, null);
     }
 
     @Test
@@ -95,7 +97,7 @@ class MutationServiceTest {
         when(attacker.mutate(MutationStrategy.REFRAME, SEED_TEXT)).thenReturn(mutated);
         when(ingest.ingestOffSpine(any(), eq("adversarial")))
                 .thenReturn(new IngestResult(VARIANT_ID, "hash", false, "adversarial"));
-        when(variants.save(any(), any(), any(), any(), any(), any()))
+        when(variants.save(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(adversarial(MutationStrategy.REFRAME, GroundTruthLabel.SPAM));
 
         service().mutate(SEED_ID, MutationStrategy.REFRAME);
@@ -112,7 +114,7 @@ class MutationServiceTest {
         assertThatThrownBy(() -> service().mutate(SEED_ID, MutationStrategy.SYNONYM))
                 .isInstanceOf(MutationException.class);
         verify(attacker, never()).mutate(any(), any());
-        verify(variants, never()).save(any(), any(), any(), any(), any(), any());
+        verify(variants, never()).save(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -143,7 +145,7 @@ class MutationServiceTest {
         assertThatThrownBy(() -> service().mutate(SEED_ID, MutationStrategy.STRUCTURE))
                 .isInstanceOf(MutationException.class);
         verify(ingest, never()).ingestOffSpine(any(), any());
-        verify(variants, never()).save(any(), any(), any(), any(), any(), any());
+        verify(variants, never()).save(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -169,6 +171,6 @@ class MutationServiceTest {
 
     private static AdversarialEmail adversarial(MutationStrategy strategy, GroundTruthLabel label) {
         return new AdversarialEmail(UUID.randomUUID(), VARIANT_ID, SEED_ID, null, strategy, label,
-                "attacker-x", Instant.EPOCH);
+                "attacker-x", null, null, Instant.EPOCH);
     }
 }
