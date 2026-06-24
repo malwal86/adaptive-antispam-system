@@ -59,14 +59,17 @@ class AttackLoopServiceTest {
     private AdversarialRunRepository runs;
     @Mock
     private AdversarialEmailRepository variants;
+    @Mock
+    private BypassMeasurementService measurement;
 
     private static final UUID SEED = UUID.randomUUID();
     private static final UUID RUN_ID = UUID.randomUUID();
     private static final Policy DEFENDER = policy("pol-active", "model-7");
 
     private AttackLoopService service(BigDecimal budget, BigDecimal costPerMutation) {
-        ArenaProperties props = new ArenaProperties(true, "attacker-x", 3, budget, costPerMutation);
-        return new AttackLoopService(mutations, scorer, policies, emails, runs, variants, props);
+        ArenaProperties props = new ArenaProperties(true, "attacker-x", 3, budget, costPerMutation, null, 1.0);
+        return new AttackLoopService(
+                mutations, scorer, policies, emails, runs, variants, measurement, props);
     }
 
     @Test
@@ -199,6 +202,42 @@ class AttackLoopServiceTest {
     }
 
     @Test
+    void measures_the_finalized_run_against_the_baseline_and_returns_the_measured_run() {
+        when(policies.findActive()).thenReturn(Optional.of(DEFENDER));
+        stubMint();
+        stubScore(Decision.BLOCK); // defender catches everything → the run completes after generation one
+        stubStartAndComplete();
+        // The measurement step (story 08.04) stamps the baseline comparison on and returns the measured run.
+        AdversarialRun measured = run(RunStatus.COMPLETED, 0.0, null);
+        when(measurement.measure(any())).thenReturn(measured);
+
+        AdversarialRun result = service(new BigDecimal("1.00"), new BigDecimal("0.01"))
+                .run(config(0.4, 3, new BigDecimal("1.00")));
+
+        // The loop's finalized run is handed to measurement, and run() returns what measurement produced.
+        ArgumentCaptor<AdversarialRun> toMeasure = ArgumentCaptor.forClass(AdversarialRun.class);
+        verify(measurement).measure(toMeasure.capture());
+        assertThat(toMeasure.getValue().id()).isEqualTo(RUN_ID);
+        assertThat(result).isSameAs(measured);
+    }
+
+    @Test
+    void does_not_measure_a_run_that_failed_mid_loop() {
+        when(policies.findActive()).thenReturn(Optional.of(DEFENDER));
+        when(mutations.mutateSeed(any(), any(), any(), any(), any()))
+                .thenThrow(new AttackerUnavailableException("attacker down", new RuntimeException()));
+        stubStartAndComplete();
+
+        try {
+            service(new BigDecimal("1.00"), new BigDecimal("0.01")).run(config(0.4, 3, new BigDecimal("1.00")));
+        } catch (AttackerUnavailableException expected) {
+            // A failed run has no meaningful bypass to measure or feed to the corpus.
+        }
+
+        verify(measurement, never()).measure(any());
+    }
+
+    @Test
     void finalizes_the_run_as_failed_when_the_attacker_is_unreachable_mid_run() {
         when(policies.findActive()).thenReturn(Optional.of(DEFENDER));
         when(mutations.mutateSeed(any(), any(), any(), any(), any()))
@@ -255,6 +294,9 @@ class AttackLoopServiceTest {
         when(runs.complete(eq(RUN_ID), nullable(Double.class), nullable(Double.class), any(), anyInt(),
                 status.capture())).thenAnswer(inv ->
                 run(inv.getArgument(5), inv.getArgument(1), inv.getArgument(2)));
+        // Post-loop measurement (story 08.04) is exercised separately; here it echoes the finalized run
+        // so the loop's own control flow is what these tests pin. Lenient: the failure paths never reach it.
+        lenient().when(measurement.measure(any())).thenAnswer(inv -> inv.getArgument(0));
         return status;
     }
 
@@ -283,7 +325,7 @@ class AttackLoopServiceTest {
 
     private static AdversarialRun run(RunStatus status, Double actualBypassRate, Double precisionFpRate) {
         return new AdversarialRun(RUN_ID, "attacker-x", "model-7", "pol-active", 0.4, actualBypassRate,
-                precisionFpRate, 3, new BigDecimal("1.00"), new BigDecimal("0.00"), 0, status,
+                precisionFpRate, null, null, 3, new BigDecimal("1.00"), new BigDecimal("0.00"), 0, status,
                 Instant.EPOCH, null);
     }
 

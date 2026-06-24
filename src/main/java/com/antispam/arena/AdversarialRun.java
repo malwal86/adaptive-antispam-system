@@ -21,6 +21,12 @@ import java.util.UUID;
  * rate (legit mail wrongly blocked). Each is null until the run terminates, and stays null if that
  * track did not run.
  *
+ * <p>After the loop terminates the run is measured against a fixed baseline (story 08.04):
+ * {@link #baselineBypassRate} is the same Track A bypass rate under {@link #baselinePolicyVersion} —
+ * the genesis (or configured) defender — so the run reports "danger missed by baseline" next to the
+ * danger the current defender missed. Both baseline fields are null until that post-step records them,
+ * and the rate stays null when the run had no Track A to score.
+ *
  * @param id                    this run's id; the parent of every variant it mints
  * @param attackerModel         the configured red-team model ({@code antispam.arena.attacker-model})
  * @param defenderModel         the model artifact the defender's active policy is calibrated for
@@ -32,6 +38,10 @@ import java.util.UUID;
  * @param precisionFpRate       the Track B precision false-positive rate in [0,1] — legit variants the
  *                              defender wrongly blocked (story 08.02b); null until terminated, and null
  *                              after if no Track B ran (a spam-only run)
+ * @param baselinePolicyVersion the fixed baseline defender the variants were also scored against (story
+ *                              08.04); null until measured, or if no baseline was resolvable
+ * @param baselineBypassRate    the Track A bypass rate under that baseline in [0,1] — the "danger missed
+ *                              by baseline" number; null until measured, and null after if no Track A ran
  * @param generationCap         the hard cap on generations (3–5)
  * @param budgetUsd             the hard ceiling on attacker spend for the run
  * @param spentUsd              attacker spend consumed so far
@@ -48,6 +58,8 @@ public record AdversarialRun(
         double targetBypassRate,
         Double actualBypassRate,
         Double precisionFpRate,
+        String baselinePolicyVersion,
+        Double baselineBypassRate,
         int generationCap,
         BigDecimal budgetUsd,
         BigDecimal spentUsd,

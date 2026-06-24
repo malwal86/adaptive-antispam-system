@@ -113,4 +113,10 @@ def gitCommit() {
 
 tasks.named('test') {
     useJUnitPlatform()
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+        showStackTraces true
+        showCauses true
+    }
 }

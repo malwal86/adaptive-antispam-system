@@ -53,6 +53,14 @@ public class PolicyRepository {
             where shadow
             """;
 
+    private static final String SELECT_OLDEST_SQL = """
+            select version, active, warn_threshold, quarantine_threshold, block_threshold,
+                   llm_threshold, routing_band_width, burst_threshold, model_version, created_at
+            from policies
+            order by created_at, version
+            limit 1
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Autowired
@@ -71,6 +79,17 @@ public class PolicyRepository {
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * The genesis policy: the earliest-created regime, the original calibrated defender before any
+     * retrain promoted a newer one (Epic 10). The adversarial arena uses it as the fixed baseline its
+     * variants are also scored against (story 08.04), so the "danger missed by baseline" comparison and
+     * the cross-run bypass-rate trend stay anchored to one stable reference. Empty only when no policy
+     * exists at all.
+     */
+    public Optional<Policy> findOldest() {
+        return jdbc.query(SELECT_OLDEST_SQL, POLICY_MAPPER).stream().findFirst();
     }
 
     /**
