@@ -16,6 +16,8 @@ import java.util.UUID;
  * @param strategy        the perturbation applied (token)
  * @param groundTruthLabel the preserved ground-truth class (token)
  * @param attackerModel   the attacker model that minted the variant
+ * @param runId           the attack run this variant belongs to (story 08.02), or null when standalone
+ * @param generation      the 1-based generation that minted it within the run, or null when standalone
  * @param createdAt       when the variant was logged
  */
 public record AdversarialEmailResponse(
@@ -26,6 +28,8 @@ public record AdversarialEmailResponse(
         String strategy,
         String groundTruthLabel,
         String attackerModel,
+        UUID runId,
+        Integer generation,
         Instant createdAt) {
 
     public static AdversarialEmailResponse from(AdversarialEmail variant) {
@@ -37,6 +41,8 @@ public record AdversarialEmailResponse(
                 variant.strategy().dbValue(),
                 variant.label().dbValue(),
                 variant.attackerModel(),
+                variant.runId(),
+                variant.generation(),
                 variant.createdAt());
     }
 }

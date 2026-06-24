@@ -20,33 +20,33 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AdversarialEmailRepository {
 
+    private static final String COLUMNS = """
+            id, variant_email_id, seed_email_id, parent_variant_id,
+            mutation_strategy, ground_truth_label, attacker_model, run_id, generation, created_at
+            """;
+
     private static final String INSERT_SQL = """
             insert into adversarial_emails (
                 id, variant_email_id, seed_email_id, parent_variant_id,
-                mutation_strategy, ground_truth_label, attacker_model)
-            values (?, ?, ?, ?, ?, ?, ?)
+                mutation_strategy, ground_truth_label, attacker_model, run_id, generation)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (variant_email_id) do nothing
-            returning id, variant_email_id, seed_email_id, parent_variant_id,
-                      mutation_strategy, ground_truth_label, attacker_model, created_at
-            """;
+            returning """ + COLUMNS;
 
-    private static final String SELECT_BY_ID_SQL = """
-            select id, variant_email_id, seed_email_id, parent_variant_id,
-                   mutation_strategy, ground_truth_label, attacker_model, created_at
-            from adversarial_emails where id = ?
-            """;
+    private static final String SELECT_BY_ID_SQL =
+            "select " + COLUMNS + " from adversarial_emails where id = ?";
 
-    private static final String SELECT_BY_SEED_SQL = """
-            select id, variant_email_id, seed_email_id, parent_variant_id,
-                   mutation_strategy, ground_truth_label, attacker_model, created_at
-            from adversarial_emails where seed_email_id = ?
+    private static final String SELECT_BY_SEED_SQL = "select " + COLUMNS + """
+             from adversarial_emails where seed_email_id = ?
             order by created_at, id
             """;
 
-    private static final String SELECT_BY_VARIANT_SQL = """
-            select id, variant_email_id, seed_email_id, parent_variant_id,
-                   mutation_strategy, ground_truth_label, attacker_model, created_at
-            from adversarial_emails where variant_email_id = ?
+    private static final String SELECT_BY_VARIANT_SQL =
+            "select " + COLUMNS + " from adversarial_emails where variant_email_id = ?";
+
+    private static final String SELECT_BY_RUN_SQL = "select " + COLUMNS + """
+             from adversarial_emails where run_id = ?
+            order by generation, created_at, id
             """;
 
     private final JdbcTemplate jdbc;
@@ -62,13 +62,17 @@ public class AdversarialEmailRepository {
      *
      * @param parentVariantId the parent variant for an iterative attack, or null when mutated
      *                        directly from the seed
+     * @param runId           the attack run this variant belongs to (story 08.02), or null for a
+     *                        standalone mutation (08.01); travels together with {@code generation}
+     * @param generation      the 1-based generation that minted it, or null for a standalone mutation
      */
     public AdversarialEmail save(UUID variantEmailId, UUID seedEmailId, UUID parentVariantId,
-            MutationStrategy strategy, GroundTruthLabel label, String attackerModel) {
+            MutationStrategy strategy, GroundTruthLabel label, String attackerModel,
+            UUID runId, Integer generation) {
         UUID id = UUID.randomUUID();
         List<AdversarialEmail> inserted = jdbc.query(INSERT_SQL, ADVERSARIAL_EMAIL_MAPPER,
                 id, variantEmailId, seedEmailId, parentVariantId,
-                strategy.dbValue(), label.dbValue(), attackerModel);
+                strategy.dbValue(), label.dbValue(), attackerModel, runId, generation);
         if (!inserted.isEmpty()) {
             return inserted.get(0);
         }
@@ -90,6 +94,11 @@ public class AdversarialEmailRepository {
         return jdbc.query(SELECT_BY_SEED_SQL, ADVERSARIAL_EMAIL_MAPPER, seedEmailId);
     }
 
+    /** Every variant a run minted, in generation then mint order — replays the campaign (story 08.02). */
+    public List<AdversarialEmail> findByRun(UUID runId) {
+        return jdbc.query(SELECT_BY_RUN_SQL, ADVERSARIAL_EMAIL_MAPPER, runId);
+    }
+
     private Optional<AdversarialEmail> findByVariantEmailId(UUID variantEmailId) {
         try {
             return Optional.ofNullable(
@@ -109,6 +118,8 @@ public class AdversarialEmailRepository {
                 MutationStrategy.fromDbValue(rs.getString("mutation_strategy")),
                 GroundTruthLabel.fromDbValue(rs.getString("ground_truth_label")),
                 rs.getString("attacker_model"),
+                rs.getObject("run_id", UUID.class),
+                rs.getObject("generation", Integer.class),
                 createdAt == null ? null : createdAt.toInstant());
     };
 }

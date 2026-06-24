@@ -64,6 +64,19 @@ public class MutationService {
      * @throws AttackerUnavailableException if the attacker model cannot be reached
      */
     public AdversarialEmail mutate(UUID seedEmailId, MutationStrategy strategy) {
+        return mutateInRun(seedEmailId, strategy, null, null);
+    }
+
+    /**
+     * Mutates a real abuse seed directly (the first generation of an attack run, story 08.02), tagging
+     * the variant with the run and generation. Same contract as {@link #mutate} but recording run
+     * lineage; {@code mutate} is this with no run.
+     *
+     * @param runId      the run this variant belongs to, or null for a standalone mutation
+     * @param generation the 1-based generation that minted it, or null when standalone
+     */
+    public AdversarialEmail mutateInRun(UUID seedEmailId, MutationStrategy strategy,
+            UUID runId, Integer generation) {
         Email seed = emails.findById(seedEmailId)
                 .orElseThrow(() -> new MutationException("seed email not found: " + seedEmailId));
         GroundTruthLabel label = labels.findByEmailId(seedEmailId)
@@ -72,25 +85,54 @@ public class MutationService {
             throw new MutationException(
                     "seed " + seedEmailId + " is ham; the mutation engine perturbs abuse seeds only");
         }
+        // Mutated directly from the seed, so there is no parent variant (iterative attacks set one).
+        return mint(seed, seedEmailId, null, strategy, label, runId, generation);
+    }
 
-        String seedText = new String(seed.rawContent(), StandardCharsets.UTF_8);
-        String mutated = attacker.mutate(strategy, seedText);
+    /**
+     * Mutates an existing variant again — an iterative attack that descends one more generation from
+     * {@code parent} (story 08.02). The new variant keeps the family's root {@code seedEmailId} and the
+     * preserved ground-truth label, but its immediate parent is {@code parent}: this is how a later
+     * generation builds on a variant that bypassed, concentrating the attack on what worked.
+     *
+     * @param parent     the variant being perturbed further (its content is the mutation's input)
+     * @param runId      the run this variant belongs to
+     * @param generation the 1-based generation that minted it (the parent's generation + 1)
+     */
+    public AdversarialEmail mutateVariant(AdversarialEmail parent, MutationStrategy strategy,
+            UUID runId, int generation) {
+        Email parentEmail = emails.findById(parent.variantEmailId()).orElseThrow(() ->
+                new MutationException("parent variant email not found: " + parent.variantEmailId()));
+        return mint(parentEmail, parent.seedEmailId(), parent.id(), strategy, parent.label(),
+                runId, generation);
+    }
+
+    /**
+     * The shared minting core: perturb {@code source}'s content under {@code strategy}, reject a
+     * degenerate result, ingest the variant off the live spine, and log its lineage. Used by both a
+     * seed mutation and an iterative variant mutation, which differ only in what they perturb and what
+     * lineage they record.
+     */
+    private AdversarialEmail mint(Email source, UUID seedEmailId, UUID parentVariantId,
+            MutationStrategy strategy, GroundTruthLabel label, UUID runId, Integer generation) {
+        String sourceText = new String(source.rawContent(), StandardCharsets.UTF_8);
+        String mutated = attacker.mutate(strategy, sourceText);
         if (mutated == null || mutated.isBlank()) {
-            throw new MutationException("attacker returned an empty mutation for seed " + seedEmailId);
+            throw new MutationException("attacker returned an empty mutation for source " + source.id());
         }
-        if (mutated.equals(seedText)) {
+        if (mutated.equals(sourceText)) {
             throw new MutationException(
-                    "mutation was a no-op (variant identical to seed) for seed " + seedEmailId);
+                    "mutation was a no-op (variant identical to its source) for source " + source.id());
         }
 
         // Off the live spine: the variant becomes a canonical email so the pipeline can score it,
         // but generating it must not accrue reputation or extract features as a real arrival would.
         IngestResult variant = ingest.ingestOffSpine(mutated.getBytes(StandardCharsets.UTF_8), VARIANT_SOURCE);
-        // Mutated directly from the seed, so there is no parent variant (iterative attacks set one).
-        AdversarialEmail logged = variants.save(
-                variant.emailId(), seedEmailId, null, strategy, label, properties.attackerModel());
-        log.info("minted adversarial variant id={} seed={} strategy={} label={} model={}",
-                logged.id(), seedEmailId, strategy.dbValue(), label.dbValue(), properties.attackerModel());
+        AdversarialEmail logged = variants.save(variant.emailId(), seedEmailId, parentVariantId,
+                strategy, label, properties.attackerModel(), runId, generation);
+        log.info("minted adversarial variant id={} seed={} parent={} run={} gen={} strategy={} label={} model={}",
+                logged.id(), seedEmailId, parentVariantId, runId, generation,
+                strategy.dbValue(), label.dbValue(), properties.attackerModel());
         return logged;
     }
 }

@@ -9,11 +9,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Maps the arena's failure modes to honest HTTP status: a bad seed or degenerate perturbation
- * ({@link MutationException}) is the caller's problem → 400; the attacker model being unreachable
- * ({@link AttackerUnavailableException}) is a dependency outage, not a bad request → 503.
+ * Maps the arena's failure modes to honest HTTP status across both the mutation endpoints (story
+ * 08.01) and the bounded-loop endpoints (story 08.02): a bad seed, an invalid run config, or a
+ * degenerate perturbation ({@link MutationException}) is the caller's problem → 400; the attacker
+ * model being unreachable ({@link AttackerUnavailableException}) is a dependency outage, not a bad
+ * request → 503.
  */
-@RestControllerAdvice(assignableTypes = MutationController.class)
+@RestControllerAdvice(assignableTypes = {MutationController.class, AttackRunController.class})
 public class ArenaExceptionHandler {
 
     @ExceptionHandler(MutationException.class)
