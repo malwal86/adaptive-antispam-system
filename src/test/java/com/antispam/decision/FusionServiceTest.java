@@ -16,6 +16,7 @@ import com.antispam.decision.model.OnnxModel;
 import com.antispam.ingest.Email;
 import com.antispam.reputation.BetaReputation;
 import com.antispam.reputation.ReputationService;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -88,5 +89,43 @@ class FusionServiceTest {
         // A spoofed (unaligned) mail must be scored on the capped unauthenticated bucket.
         verify(reputation).reputationFor(anyString(), eq(false));
         verify(reputation, never()).reputationFor(anyString(), eq(true));
+    }
+
+    // fuseIfApplicable is the "fuse only when there are model scores" rule shared by DecisionService and
+    // PolicyScorer (consolidated here, story-agnostic refactor). It returns a bare FusedScore or null.
+
+    @Test
+    void fuse_if_applicable_skips_a_hard_rule_outcome_with_no_scores() {
+        Email email = TestEmails.from("sender.test", "Authentication-Results: mx; dmarc=pass");
+        DecisionOutcome hardRule =
+                new DecisionOutcome(Decision.BLOCK, List.of(), RouteUsed.HARD_RULE, 2L);
+
+        assertThat(fusionService.fuseIfApplicable(email, hardRule)).isNull();
+        // No model score to fuse → it never reaches the calibration precondition or reputation.
+        verifyNoInteractions(reputation);
+    }
+
+    @Test
+    void fuse_if_applicable_returns_null_when_fusion_declines() {
+        // Scores present, but the default calibrator is uncalibrated → fuse() declines, so the rule
+        // surfaces null (the model decision stays provisional), exactly as the inline check did before.
+        Email email = TestEmails.from("sender.test", "Authentication-Results: mx; dmarc=pass");
+        DecisionOutcome model = new DecisionOutcome(Decision.ALLOW, List.of(), RouteUsed.MODEL, 1L, SCORES);
+
+        assertThat(fusionService.fuseIfApplicable(email, model)).isNull();
+    }
+
+    @Test
+    void fuse_if_applicable_fuses_a_model_outcome_when_calibrated() {
+        calibrator.install(ProbabilityCalibrator.identity());
+        when(reputation.reputationFor(anyString(), eq(true))).thenReturn(new BetaReputation(8, 2, 1, 1));
+        Email email = TestEmails.from("good.test", "Authentication-Results: mx; dmarc=pass");
+        DecisionOutcome model = new DecisionOutcome(Decision.ALLOW, List.of(), RouteUsed.MODEL, 1L, SCORES);
+
+        FusedScore fused = fusionService.fuseIfApplicable(email, model);
+
+        // Identical to calling fuse() directly on the same scores — fuseIfApplicable only adds the guard.
+        assertThat(fused).isNotNull();
+        assertThat(fused.posterior()).isEqualTo(fusionService.fuse(email, SCORES).orElseThrow().posterior());
     }
 }

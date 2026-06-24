@@ -85,4 +85,19 @@ public class FusionService {
                 fused.posterior(), fused.uncertaintyBand());
         return Optional.of(fused);
     }
+
+    /**
+     * Fuses {@code outcome}'s model score with sender reputation when fusion applies, or {@code null}
+     * when it does not: a hard-rule decision carries no model score ({@code scores == null}), and a
+     * model decision is fused only when a calibration is installed (so {@link #fuse} may still decline).
+     * This is the "fuse if there are scores" rule both the live decision path ({@link DecisionService})
+     * and policy scoring ({@link com.antispam.decision.policy.PolicyScorer}) apply before tiering, kept
+     * here in one place rather than mirrored in each.
+     */
+    public FusedScore fuseIfApplicable(Email email, DecisionOutcome outcome) {
+        if (outcome.scores() == null) {
+            return null;
+        }
+        return fuse(email, outcome.scores()).orElse(null);
+    }
 }

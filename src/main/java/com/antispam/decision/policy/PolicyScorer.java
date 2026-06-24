@@ -70,7 +70,7 @@ public class PolicyScorer {
      */
     public ScoredDecision score(Email email, Policy policy) {
         DecisionOutcome outcome = decisionService.evaluate(email);
-        FusedScore fused = fuseIfApplicable(email, outcome);
+        FusedScore fused = fusionService.fuseIfApplicable(email, outcome);
         return scoreFrom(outcome, fused, policy);
     }
 
@@ -108,18 +108,5 @@ public class PolicyScorer {
         return new ScoredDecision(
                 tier, List.<ReasonCode>copyOf(outcome.reasonCodes()), route, routingReasons,
                 policy.version(), posterior);
-    }
-
-    /**
-     * Fuses the model's calibrated score with sender reputation for a model-route decision, or
-     * {@code null} when fusion does not apply — mirrors {@code DecisionService.fuseIfApplicable}:
-     * a hard-rule decision carries no model score, and a model decision is fused only when a
-     * calibration is installed.
-     */
-    private FusedScore fuseIfApplicable(Email email, DecisionOutcome outcome) {
-        if (outcome.scores() == null) {
-            return null;
-        }
-        return fusionService.fuse(email, outcome.scores()).orElse(null);
     }
 }
