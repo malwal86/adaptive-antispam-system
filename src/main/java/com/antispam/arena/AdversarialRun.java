@@ -15,16 +15,23 @@ import java.util.UUID;
  * <p>It also records both bounds that make the loop terminate by construction (AC 3) — the
  * {@link #generationCap} (3–5) and the hard {@link #budgetUsd} spend ceiling — alongside how much of
  * each was consumed ({@link #generationsRun}, {@link #spentUsd}). A budget-exhausted run stops early
- * with both below the cap and its partial results still recorded (AC 5). {@link #actualBypassRate} is
- * null until the run terminates; on termination it is the share of variants that slipped past the
- * fixed defender across the whole run.
+ * with both below the cap and its partial results still recorded (AC 5). The two-track run (story
+ * 08.02b) reports recall and precision pressure separately: {@link #actualBypassRate} is the Track A
+ * bypass rate (abuse reaching the inbox) and {@link #precisionFpRate} is the Track B false-positive
+ * rate (legit mail wrongly blocked). Each is null until the run terminates, and stays null if that
+ * track did not run.
  *
  * @param id                    this run's id; the parent of every variant it mints
  * @param attackerModel         the configured red-team model ({@code antispam.arena.attacker-model})
  * @param defenderModel         the model artifact the defender's active policy is calibrated for
  * @param defenderPolicyVersion the policy captured at start and held fixed for the whole run
  * @param targetBypassRate      the attacker's goal bypass rate in [0,1]
- * @param actualBypassRate      the achieved bypass rate in [0,1]; null until the run terminates
+ * @param actualBypassRate      the Track A recall bypass rate in [0,1] — abuse variants that reached
+ *                              the inbox; null until the run terminates, and null after if no Track A
+ *                              ran (a legit-only run)
+ * @param precisionFpRate       the Track B precision false-positive rate in [0,1] — legit variants the
+ *                              defender wrongly blocked (story 08.02b); null until terminated, and null
+ *                              after if no Track B ran (a spam-only run)
  * @param generationCap         the hard cap on generations (3–5)
  * @param budgetUsd             the hard ceiling on attacker spend for the run
  * @param spentUsd              attacker spend consumed so far
@@ -40,6 +47,7 @@ public record AdversarialRun(
         String defenderPolicyVersion,
         double targetBypassRate,
         Double actualBypassRate,
+        Double precisionFpRate,
         int generationCap,
         BigDecimal budgetUsd,
         BigDecimal spentUsd,

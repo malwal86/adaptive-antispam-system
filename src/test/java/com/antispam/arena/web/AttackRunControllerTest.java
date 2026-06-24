@@ -55,16 +55,17 @@ class AttackRunControllerTest {
     @Test
     void starting_a_run_returns_201_with_the_run_summary() throws Exception {
         when(loop.run(any())).thenReturn(new AdversarialRun(RUN_ID, "attacker-x", "model-7", "pol-active",
-                0.4, 0.5, 3, new BigDecimal("1.00"), new BigDecimal("0.06"), 3,
+                0.4, 0.5, 0.25, 3, new BigDecimal("1.00"), new BigDecimal("0.06"), 3,
                 RunStatus.COMPLETED, Instant.EPOCH, Instant.EPOCH));
 
         mockMvc.perform(post("/arena/runs").contentType("application/json").content("""
-                        {"seedEmailIds":["%s"],"targetBypassRate":0.4}
+                        {"spamSeedEmailIds":["%s"],"targetBypassRate":0.4}
                         """.formatted(SEED_ID)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(RUN_ID.toString()))
                 .andExpect(jsonPath("$.defenderPolicyVersion").value("pol-active"))
                 .andExpect(jsonPath("$.actualBypassRate").value(0.5))
+                .andExpect(jsonPath("$.precisionFpRate").value(0.25))
                 .andExpect(jsonPath("$.generationsRun").value(3))
                 .andExpect(jsonPath("$.status").value("completed"));
     }
@@ -74,7 +75,7 @@ class AttackRunControllerTest {
         when(loop.run(any())).thenThrow(new MutationException("an attack run needs at least one seed"));
 
         mockMvc.perform(post("/arena/runs").contentType("application/json").content("""
-                        {"seedEmailIds":["%s"],"targetBypassRate":0.4}
+                        {"spamSeedEmailIds":["%s"],"targetBypassRate":0.4}
                         """.formatted(SEED_ID)))
                 .andExpect(status().isBadRequest());
     }

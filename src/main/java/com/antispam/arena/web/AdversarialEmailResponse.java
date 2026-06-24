@@ -15,9 +15,13 @@ import java.util.UUID;
  * @param parentVariantId the parent variant for an iterative attack, or null
  * @param strategy        the perturbation applied (token)
  * @param groundTruthLabel the preserved ground-truth class (token)
+ * @param track           the track this variant belongs to (story 08.02b): {@code spam} (recall) or
+ *                        {@code legit} (precision), derived from the ground truth
  * @param attackerModel   the attacker model that minted the variant
  * @param runId           the attack run this variant belongs to (story 08.02), or null when standalone
  * @param generation      the 1-based generation that minted it within the run, or null when standalone
+ * @param defenderDelivered the fixed defender's verdict (story 08.02b): true if delivered, false if
+ *                        withheld, null if the variant was never scored by a run
  * @param createdAt       when the variant was logged
  */
 public record AdversarialEmailResponse(
@@ -27,9 +31,11 @@ public record AdversarialEmailResponse(
         UUID parentVariantId,
         String strategy,
         String groundTruthLabel,
+        String track,
         String attackerModel,
         UUID runId,
         Integer generation,
+        Boolean defenderDelivered,
         Instant createdAt) {
 
     public static AdversarialEmailResponse from(AdversarialEmail variant) {
@@ -40,9 +46,11 @@ public record AdversarialEmailResponse(
                 variant.parentVariantId(),
                 variant.strategy().dbValue(),
                 variant.label().dbValue(),
+                variant.track().token(),
                 variant.attackerModel(),
                 variant.runId(),
                 variant.generation(),
+                variant.defenderDelivered(),
                 variant.createdAt());
     }
 }

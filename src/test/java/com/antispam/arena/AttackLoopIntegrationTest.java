@@ -71,7 +71,8 @@ class AttackLoopIntegrationTest extends AbstractPostgresIntegrationTest {
         UUID seedB = seedSpam("loopB");
 
         AdversarialRun run = loop.run(new AttackRunConfig(
-                List.of(seedA, seedB), List.of(MutationStrategy.SYNONYM, MutationStrategy.HOMOGLYPH),
+                List.of(seedA, seedB), List.of(),
+                List.of(MutationStrategy.SYNONYM, MutationStrategy.HOMOGLYPH),
                 0.5, 3, new BigDecimal("1.00")));
 
         // The run is recorded and finalized (AC 1): a terminal status, the captured fixed defender, and
@@ -94,6 +95,9 @@ class AttackLoopIntegrationTest extends AbstractPostgresIntegrationTest {
             assertThat(v.generation()).isBetween(1, run.generationCap());
             assertThat(v.seedEmailId()).isIn(seedA, seedB);
             assertThat(v.label()).isEqualTo(GroundTruthLabel.SPAM);
+            // Track A only (no legit seeds), and every scored variant carries the defender's verdict.
+            assertThat(v.track()).isEqualTo(Track.SPAM);
+            assertThat(v.defenderDelivered()).isNotNull();
         });
         assertThat(minted).anySatisfy(v -> assertThat(v.generation()).isEqualTo(1));
         // A first-generation variant has no parent; any later generation builds on a prior variant.

@@ -22,10 +22,12 @@ import org.springframework.stereotype.Service;
  * without perturbing live reputation/features), and log an {@link AdversarialEmail} whose lineage
  * points back to the seed.
  *
- * <p>The engine mutates only abuse seeds: a mutation of spam stays spam by construction, so the
- * variant's ground-truth label is the seed's and recall is what gets stressed. Mutating legit mail
- * to defend the precision floor is the two-track story (08.03); iterative attacks that mutate a
- * prior variant are the bounded-loop story (08.02) — both extend the lineage this engine writes.
+ * <p>The engine preserves the seed's ground-truth label by construction: a mutation of spam stays
+ * spam, a mutation of legit mail stays ham. Which class a seed may belong to is the caller's
+ * {@link Track}: Track A ({@link Track#SPAM}) perturbs abuse seeds to stress recall (story 08.01),
+ * Track B ({@link Track#LEGIT}) perturbs legit mail to stress the precision floor (story 08.02b), and
+ * each track only applies the strategies that keep its label intact. Iterative attacks that mutate a
+ * prior variant are the bounded-loop story (08.02) — all extend the lineage this engine writes.
  */
 @Service
 public class MutationService {
@@ -54,7 +56,7 @@ public class MutationService {
     }
 
     /**
-     * Mutates the seed email under {@code strategy} and logs the resulting variant.
+     * Mutates an abuse seed standalone (story 08.01, {@code POST /arena/mutations}): Track A, no run.
      *
      * @param seedEmailId a real abuse seed from the corpus (spam or phish)
      * @param strategy    the perturbation to apply
@@ -64,26 +66,31 @@ public class MutationService {
      * @throws AttackerUnavailableException if the attacker model cannot be reached
      */
     public AdversarialEmail mutate(UUID seedEmailId, MutationStrategy strategy) {
-        return mutateInRun(seedEmailId, strategy, null, null);
+        return mutateSeed(seedEmailId, strategy, Track.SPAM, null, null);
     }
 
     /**
-     * Mutates a real abuse seed directly (the first generation of an attack run, story 08.02), tagging
-     * the variant with the run and generation. Same contract as {@link #mutate} but recording run
-     * lineage; {@code mutate} is this with no run.
+     * Mutates a real seed directly under a given {@link Track} (the first generation of an attack run,
+     * story 08.02/08.02b), tagging the variant with the run and generation. The track decides which
+     * seeds are legal: Track A perturbs abuse seeds (spam/phish) to stress recall, Track B perturbs
+     * legit mail (ham) to stress precision — mutating a seed the track cannot preserve is rejected, so
+     * a precision run can never be fed an abuse seed nor a recall run a legit one.
      *
+     * @param track      the regime this mutation belongs to; gates the seed's eligible label
      * @param runId      the run this variant belongs to, or null for a standalone mutation
      * @param generation the 1-based generation that minted it, or null when standalone
+     * @throws MutationException if the seed is missing, unlabeled, or its class is not one this track
+     *                           preserves
      */
-    public AdversarialEmail mutateInRun(UUID seedEmailId, MutationStrategy strategy,
+    public AdversarialEmail mutateSeed(UUID seedEmailId, MutationStrategy strategy, Track track,
             UUID runId, Integer generation) {
         Email seed = emails.findById(seedEmailId)
                 .orElseThrow(() -> new MutationException("seed email not found: " + seedEmailId));
         GroundTruthLabel label = labels.findByEmailId(seedEmailId)
                 .orElseThrow(() -> new MutationException("seed has no ground-truth label: " + seedEmailId));
-        if (label == GroundTruthLabel.HAM) {
-            throw new MutationException(
-                    "seed " + seedEmailId + " is ham; the mutation engine perturbs abuse seeds only");
+        if (!track.accepts(label)) {
+            throw new MutationException("seed " + seedEmailId + " is " + label.dbValue()
+                    + "; the " + track.token() + " track cannot preserve that ground truth");
         }
         // Mutated directly from the seed, so there is no parent variant (iterative attacks set one).
         return mint(seed, seedEmailId, null, strategy, label, runId, generation);

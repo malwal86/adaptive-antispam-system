@@ -22,6 +22,11 @@ import java.util.UUID;
  * @param runId           the attack run this variant belongs to (story 08.02), or null for a
  *                        standalone mutation (story 08.01)
  * @param generation      the 1-based generation that minted it within the run, or null when standalone
+ * @param defenderDelivered the fixed defender's verdict once the run scored this variant (story
+ *                        08.02b): true if it was delivered to the inbox, false if withheld; null until
+ *                        scored (and forever for a standalone mutation no run scored). A Track A bypass
+ *                        is a spam/phish variant with {@code true}; a Track B false positive is a ham
+ *                        variant with {@code false}
  * @param createdAt       when the variant was logged
  */
 public record AdversarialEmail(
@@ -34,5 +39,11 @@ public record AdversarialEmail(
         String attackerModel,
         UUID runId,
         Integer generation,
+        Boolean defenderDelivered,
         Instant createdAt) {
+
+    /** The track this variant belongs to (story 08.02b), derived from its preserved ground truth. */
+    public Track track() {
+        return Track.of(label);
+    }
 }

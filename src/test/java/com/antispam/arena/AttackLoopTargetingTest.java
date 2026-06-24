@@ -27,11 +27,27 @@ class AttackLoopTargetingTest {
                 new ScoredVariant(slipped, true), new ScoredVariant(caught, false)));
 
         // Only the bypassing variant becomes a target, and it carries that variant as its parent so the
-        // next generation builds on it (an iterative attack), keeping the family's root seed.
+        // next generation builds on it (an iterative attack), keeping the family's root seed and track.
         assertThat(next).singleElement().satisfies(target -> {
             assertThat(target.parentVariant()).isEqualTo(slipped);
             assertThat(target.seedEmailId()).isEqualTo(SEED);
             assertThat(target.strategy()).isEqualTo(MutationStrategy.HOMOGLYPH);
+            assertThat(target.track()).isEqualTo(Track.SPAM);
+        });
+    }
+
+    @Test
+    void a_wrongly_blocked_legit_variant_is_a_gap_the_next_generation_re_attacks() {
+        // For Track B (precision), beating the defender means being wrongly blocked — that is a gap too,
+        // so the loop iterates on the legit variant that caused a false positive, on its own track.
+        AdversarialEmail blockedHam = variant(MutationStrategy.STRUCTURE, GroundTruthLabel.HAM);
+
+        List<AttackTarget> next = AttackLoopService.targetGaps(List.of(
+                new ScoredVariant(blockedHam, true)));
+
+        assertThat(next).singleElement().satisfies(target -> {
+            assertThat(target.parentVariant()).isEqualTo(blockedHam);
+            assertThat(target.track()).isEqualTo(Track.LEGIT);
         });
     }
 
@@ -57,7 +73,11 @@ class AttackLoopTargetingTest {
     }
 
     private static AdversarialEmail variant(MutationStrategy strategy) {
+        return variant(strategy, GroundTruthLabel.SPAM);
+    }
+
+    private static AdversarialEmail variant(MutationStrategy strategy, GroundTruthLabel label) {
         return new AdversarialEmail(UUID.randomUUID(), UUID.randomUUID(), SEED, null, strategy,
-                GroundTruthLabel.SPAM, "attacker-x", UUID.randomUUID(), 1, Instant.EPOCH);
+                label, "attacker-x", UUID.randomUUID(), 1, null, Instant.EPOCH);
     }
 }

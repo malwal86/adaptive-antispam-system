@@ -18,10 +18,18 @@ import org.springframework.stereotype.Service;
 
 /**
  * The bounded, budgeted iterative attack loop (story 08.02, PRD §Subsystem 6). One {@link #run} is a
- * real adversarial search: the attacker perturbs real seed spam (story 08.01), scores each variant
- * against a <em>fixed</em> defender, sees which variants bypassed, and has the next generation target
- * those gaps — for a bounded number of generations under a hard spend ceiling ("even my red-team has
- * a budget").
+ * real adversarial search: the attacker perturbs real seeds (story 08.01), scores each variant against
+ * a <em>fixed</em> defender, sees which variants beat it, and has the next generation target those
+ * gaps — for a bounded number of generations under a hard spend ceiling ("even my red-team has a
+ * budget").
+ *
+ * <p><b>Two-track (story 08.02b).</b> A run stresses both dimensions of the defender at once: Track A
+ * ({@link Track#SPAM}) mutates abuse seeds and measures bypass — recall pressure — while Track B
+ * ({@link Track#LEGIT}) mutates legit mail and measures false positives — precision pressure, the
+ * good mail the defender starts blocking under attack. The two are tallied and reported separately
+ * ({@code actualBypassRate} vs {@code precisionFpRate}); a variant's track is its preserved ground
+ * truth, so the gap-targeting and metrics never confuse the two. Without Track B, hardening recall
+ * could silently wreck precision.
  *
  * <p>Three invariants make this honest rather than runaway:
  *
@@ -53,16 +61,19 @@ public class AttackLoopService {
     private final PolicyRepository policies;
     private final EmailRepository emails;
     private final AdversarialRunRepository runs;
+    private final AdversarialEmailRepository variants;
     private final ArenaProperties properties;
 
     @Autowired
     public AttackLoopService(MutationService mutations, PolicyScorer scorer, PolicyRepository policies,
-            EmailRepository emails, AdversarialRunRepository runs, ArenaProperties properties) {
+            EmailRepository emails, AdversarialRunRepository runs, AdversarialEmailRepository variants,
+            ArenaProperties properties) {
         this.mutations = mutations;
         this.scorer = scorer;
         this.policies = policies;
         this.emails = emails;
         this.runs = runs;
+        this.variants = variants;
         this.properties = properties;
     }
 
@@ -112,7 +123,8 @@ public class AttackLoopService {
             if (generation == config.generationCap()) {
                 break;
             }
-            // Target the gaps: the next generation attacks only what bypassed. No gap → converged, stop.
+            // Target the gaps: the next generation attacks only what beat the defender (a bypass on
+            // Track A, a false positive on Track B). No gap on either track → converged, stop.
             targets = targetGaps(outcome.results());
             if (targets.isEmpty()) {
                 break;
@@ -146,29 +158,36 @@ public class AttackLoopService {
                         run.id(), generation, degenerate.getMessage());
                 continue;
             }
-            boolean bypassed = bypasses(variant, defender);
-            results.add(new ScoredVariant(variant, bypassed));
-            tally.scored++;
-            if (bypassed) {
-                tally.bypassed++;
-            }
+            // Score under the fixed defender, then stamp the verdict on the variant so a bypass (Track
+            // A) or a wrongly-blocked good mail (Track B) is durable and queryable. Whether that counts
+            // as the attacker winning depends on the variant's track: abuse wins by delivery, legit by
+            // being withheld.
+            boolean delivered = defenderDelivers(variant, defender);
+            variants.recordDefenderOutcome(variant.id(), delivered);
+            Track track = variant.track();
+            boolean beatDefender = track.attackerWon(delivered);
+            results.add(new ScoredVariant(variant, beatDefender));
+            tally.record(track, beatDefender);
         }
         return new GenerationOutcome(results, false);
     }
 
     private AdversarialEmail mint(AttackTarget target, UUID runId, int generation) {
         if (target.parentVariant() == null) {
-            return mutations.mutateInRun(target.seedEmailId(), target.strategy(), runId, generation);
+            return mutations.mutateSeed(
+                    target.seedEmailId(), target.strategy(), target.track(), runId, generation);
         }
         return mutations.mutateVariant(target.parentVariant(), target.strategy(), runId, generation);
     }
 
     /**
-     * Whether the fixed defender would let this spam/phish variant through. Scored read-only under the
-     * captured policy, so the experiment cannot write live state; a variant bypasses when the verdict
-     * {@link com.antispam.decision.Decision#delivers() delivers} it to the inbox (allow or warn).
+     * Whether the fixed defender would deliver this variant to the inbox. Scored read-only under the
+     * captured policy, so the experiment cannot write live state; delivery is the verdict
+     * {@link com.antispam.decision.Decision#delivers() delivering} it (allow or warn). What delivery
+     * <em>means</em> for the attacker depends on the variant's track — a bypass for abuse, the absence
+     * of a false positive for legit mail — but that interpretation lives in {@link Track}, not here.
      */
-    private boolean bypasses(AdversarialEmail variant, Policy defender) {
+    private boolean defenderDelivers(AdversarialEmail variant, Policy defender) {
         Email email = emails.findById(variant.variantEmailId()).orElseThrow(() ->
                 new IllegalStateException("variant email vanished: " + variant.variantEmailId()));
         ScoredDecision scored = ExperimentContext.callReadOnly(() -> scorer.score(email, defender));
@@ -176,38 +195,51 @@ public class AttackLoopService {
     }
 
     private AdversarialRun finish(AdversarialRun run, Tally tally, RunBudget budget, RunStatus status) {
-        double actualBypassRate = tally.scored == 0 ? 0.0 : (double) tally.bypassed / tally.scored;
-        AdversarialRun done = runs.complete(
-                run.id(), actualBypassRate, budget.spentUsd(), tally.generationsRun, status);
-        log.info("finished adversarial run {} status={} generations={} bypassRate={} spent={}",
+        AdversarialRun done = runs.complete(run.id(), tally.recallBypassRate(), tally.precisionFpRate(),
+                budget.spentUsd(), tally.generationsRun, status);
+        log.info("finished adversarial run {} status={} generations={} bypassRate={} fpRate={} spent={}",
                 done.id(), done.status().dbValue(), done.generationsRun(),
-                done.actualBypassRate(), done.spentUsd());
+                done.actualBypassRate(), done.precisionFpRate(), done.spentUsd());
         return done;
     }
 
-    /** Generation one: every seed crossed with every configured strategy. */
+    /**
+     * Generation one (story 08.02b): every seed crossed with every configured strategy that its track
+     * can apply — abuse seeds on Track A (recall) and legit seeds on Track B (precision). A strategy
+     * that would not preserve a legit seed's ground truth (reframe, homoglyph) is simply not applied on
+     * Track B, so a ham variant always stays ham.
+     */
     private static List<AttackTarget> seedTargets(AttackRunConfig config) {
         List<AttackTarget> targets = new ArrayList<>();
-        for (UUID seed : config.seedEmailIds()) {
-            for (MutationStrategy strategy : config.strategies()) {
-                targets.add(AttackTarget.ofSeed(seed, strategy));
+        addSeedTargets(targets, config.spamSeedEmailIds(), config.strategies(), Track.SPAM);
+        addSeedTargets(targets, config.legitSeedEmailIds(), config.strategies(), Track.LEGIT);
+        return targets;
+    }
+
+    private static void addSeedTargets(List<AttackTarget> targets, List<UUID> seeds,
+            List<MutationStrategy> strategies, Track track) {
+        for (UUID seed : seeds) {
+            for (MutationStrategy strategy : strategies) {
+                if (track.applicableStrategies().contains(strategy)) {
+                    targets.add(AttackTarget.ofSeed(seed, strategy, track));
+                }
             }
         }
-        return targets;
     }
 
     /**
      * The gap-targeting step (AC 2): given a generation's results, the next generation's targets are
-     * the variants that bypassed, each re-attacked with the very strategy that bypassed — so attacker
-     * effort concentrates on previously-successful strategies/variants rather than starting over. A
-     * variant the defender caught contributes no target, so a generation that catches everything
-     * leaves no gap and the loop converges.
+     * the variants that beat the defender, each re-attacked with the very strategy that worked, on the
+     * same track — so attacker effort concentrates on previously-successful strategies/variants rather
+     * than starting over, for recall and precision alike. A variant the defender handled correctly
+     * contributes no target, so a generation that beats the defender nowhere leaves no gap and the loop
+     * converges.
      */
     static List<AttackTarget> targetGaps(List<ScoredVariant> priorGeneration) {
         return priorGeneration.stream()
-                .filter(ScoredVariant::bypassed)
-                .map(scored -> new AttackTarget(
-                        scored.variant().seedEmailId(), scored.variant(), scored.variant().strategy()))
+                .filter(ScoredVariant::beatDefender)
+                .map(scored -> new AttackTarget(scored.variant().seedEmailId(), scored.variant(),
+                        scored.variant().strategy(), scored.variant().track()))
                 .toList();
     }
 
@@ -215,10 +247,41 @@ public class AttackLoopService {
     private record GenerationOutcome(List<ScoredVariant> results, boolean budgetExhausted) {
     }
 
-    /** Running totals carried across generations and read at finalization. */
+    /**
+     * Running per-track totals carried across generations and read at finalization (story 08.02b).
+     * Track A and Track B are tallied separately so recall pressure (abuse bypassed) and precision
+     * pressure (legit wrongly blocked) are reported as two independent rates (AC 3), each null when its
+     * track did not run.
+     */
     private static final class Tally {
-        private int scored;
-        private int bypassed;
+        private int spamScored;
+        private int spamBypassed;
+        private int hamScored;
+        private int hamBlocked;
         private int generationsRun;
+
+        void record(Track track, boolean beatDefender) {
+            if (track == Track.SPAM) {
+                spamScored++;
+                if (beatDefender) {
+                    spamBypassed++;
+                }
+            } else {
+                hamScored++;
+                if (beatDefender) {
+                    hamBlocked++;
+                }
+            }
+        }
+
+        /** Track A recall: abuse variants delivered / abuse variants scored, or null if none scored. */
+        Double recallBypassRate() {
+            return spamScored == 0 ? null : (double) spamBypassed / spamScored;
+        }
+
+        /** Track B precision: legit variants wrongly blocked / legit variants scored, or null if none. */
+        Double precisionFpRate() {
+            return hamScored == 0 ? null : (double) hamBlocked / hamScored;
+        }
     }
 }

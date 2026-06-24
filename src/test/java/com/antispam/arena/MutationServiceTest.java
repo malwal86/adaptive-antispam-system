@@ -128,11 +128,46 @@ class MutationServiceTest {
     }
 
     @Test
-    void refuses_to_mutate_a_ham_seed_because_this_story_stresses_recall_not_precision() {
+    void the_standalone_track_a_mutation_refuses_a_ham_seed_it_cannot_keep_abuse() {
+        // POST /arena/mutations is Track A (recall): it perturbs abuse, so a ham seed is rejected.
+        // Mutating ham to stress precision is Track B, reached through mutateSeed(Track.LEGIT) below.
         when(emails.findById(SEED_ID)).thenReturn(Optional.of(seedEmail()));
         when(labels.findByEmailId(SEED_ID)).thenReturn(Optional.of(GroundTruthLabel.HAM));
 
         assertThatThrownBy(() -> service().mutate(SEED_ID, MutationStrategy.SYNONYM))
+                .isInstanceOf(MutationException.class);
+        verify(attacker, never()).mutate(any(), any());
+    }
+
+    @Test
+    void track_b_mutates_a_ham_seed_and_preserves_the_ham_label_on_the_variant() {
+        // Two-track (story 08.02b): Track B perturbs legit mail, and the variant stays ham so the
+        // precision floor is what gets stressed — a wrongly-blocked variant is still good mail.
+        when(emails.findById(SEED_ID)).thenReturn(Optional.of(seedEmail()));
+        when(labels.findByEmailId(SEED_ID)).thenReturn(Optional.of(GroundTruthLabel.HAM));
+        when(attacker.mutate(MutationStrategy.SYNONYM, SEED_TEXT))
+                .thenReturn("Subject: lunch plans\n\nLet's meet at noon instead");
+        when(ingest.ingestOffSpine(any(), eq("adversarial")))
+                .thenReturn(new IngestResult(VARIANT_ID, "hash", false, "adversarial"));
+        when(variants.save(any(), any(), any(), any(), eq(GroundTruthLabel.HAM), any(), any(), any()))
+                .thenReturn(adversarial(MutationStrategy.SYNONYM, GroundTruthLabel.HAM));
+
+        AdversarialEmail result = service().mutateSeed(
+                SEED_ID, MutationStrategy.SYNONYM, Track.LEGIT, null, null);
+
+        assertThat(result.label()).isEqualTo(GroundTruthLabel.HAM);
+        verify(variants).save(VARIANT_ID, SEED_ID, null, MutationStrategy.SYNONYM, GroundTruthLabel.HAM,
+                "attacker-x", null, null);
+    }
+
+    @Test
+    void track_b_refuses_an_abuse_seed_it_cannot_keep_legit() {
+        // The mirror guard: a precision run cannot be fed a spam seed (mutating it would not be ham).
+        when(emails.findById(SEED_ID)).thenReturn(Optional.of(seedEmail()));
+        when(labels.findByEmailId(SEED_ID)).thenReturn(Optional.of(GroundTruthLabel.SPAM));
+
+        assertThatThrownBy(() -> service().mutateSeed(
+                SEED_ID, MutationStrategy.SYNONYM, Track.LEGIT, null, null))
                 .isInstanceOf(MutationException.class);
         verify(attacker, never()).mutate(any(), any());
     }
@@ -171,6 +206,6 @@ class MutationServiceTest {
 
     private static AdversarialEmail adversarial(MutationStrategy strategy, GroundTruthLabel label) {
         return new AdversarialEmail(UUID.randomUUID(), VARIANT_ID, SEED_ID, null, strategy, label,
-                "attacker-x", null, null, Instant.EPOCH);
+                "attacker-x", null, null, null, Instant.EPOCH);
     }
 }

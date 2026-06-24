@@ -56,7 +56,8 @@ class MutationControllerTest {
         UUID id = UUID.randomUUID();
         when(mutationService.mutate(SEED_ID, MutationStrategy.HOMOGLYPH)).thenReturn(
                 new AdversarialEmail(id, VARIANT_EMAIL_ID, SEED_ID, null,
-                        MutationStrategy.HOMOGLYPH, GroundTruthLabel.PHISH, "gpt-4o-mini", null, null, Instant.EPOCH));
+                        MutationStrategy.HOMOGLYPH, GroundTruthLabel.PHISH, "gpt-4o-mini",
+                        null, null, null, Instant.EPOCH));
 
         mockMvc.perform(post("/arena/mutations")
                         .contentType("application/json")
@@ -68,6 +69,7 @@ class MutationControllerTest {
                 .andExpect(jsonPath("$.parentVariantId").doesNotExist())
                 .andExpect(jsonPath("$.strategy").value("homoglyph"))
                 .andExpect(jsonPath("$.groundTruthLabel").value("phish"))
+                .andExpect(jsonPath("$.track").value("spam"))
                 .andExpect(jsonPath("$.attackerModel").value("gpt-4o-mini"));
     }
 
@@ -99,7 +101,8 @@ class MutationControllerTest {
     void lists_a_seeds_attack_family_as_json() throws Exception {
         when(variants.findBySeed(SEED_ID)).thenReturn(List.of(
                 new AdversarialEmail(UUID.randomUUID(), VARIANT_EMAIL_ID, SEED_ID, null,
-                        MutationStrategy.REFRAME, GroundTruthLabel.SPAM, "gpt-4o-mini", null, null, Instant.EPOCH)));
+                        MutationStrategy.REFRAME, GroundTruthLabel.SPAM, "gpt-4o-mini",
+                        null, null, null, Instant.EPOCH)));
 
         mockMvc.perform(get("/arena/seeds/{seedId}/mutations", SEED_ID))
                 .andExpect(status().isOk())
