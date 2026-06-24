@@ -66,6 +66,26 @@ jobs:
       - name: E2E (route-stubbed)
         run: npm run e2e
 
+  ml-tests:
+    name: ML pipeline tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The retrain pipeline (story 10.02) is Python — train_candidate.py, the feature
+      # flattener, and the export fetcher. These tests guard its contract (calibration,
+      # ONNX export fidelity, reproducible versioning, loud failure) on every PR.
+      - name: Install ML toolchain + pytest
+        run: pip install --no-cache-dir -r ml/requirements.txt pytest
+
+      - name: Run ML tests
+        run: python -m pytest ml/tests -q
+
   deploy:
     name: Deploy API + live smoke test
     needs: [build-test, console]

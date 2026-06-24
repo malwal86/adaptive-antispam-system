@@ -73,3 +73,50 @@ AUTH_DEFAULT = 0.0
 LABEL_HAM = 0
 LABEL_SPAM = 1
 LABEL_PHISH = 2
+
+# Names whose value is an Authentication-Results token, encoded ordinally by
+# AUTH_ENCODING rather than read as a number. These are the last three features.
+_AUTH_NAMES = frozenset({"auth.spf", "auth.dkim", "auth.dmarc"})
+
+# Timing fields that carry a -1.0 sentinel when the email had no parseable Date —
+# matching ModelFeatureVector (hour/day are null in the JSON, -1.0 in the vector).
+_TIMING_SENTINEL_NAMES = frozenset({"timing.hourOfDayUtc", "timing.dayOfWeek"})
+
+
+def flatten_feature_set(feature_set: dict) -> list[float]:
+    """Flatten a ``FeatureSet`` JSON object into the ordered model-input vector.
+
+    This is the Python side of the cross-language flattening contract: it MUST
+    produce the exact ``float`` vector that ``ModelFeatureVector.toVector`` produces
+    on the Java side, in the :data:`FEATURE_NAMES` order, since the retrain pipeline
+    (story 10.02) trains on vectors flattened here but the model is served on vectors
+    flattened there. The rules mirror that class exactly: booleans become
+    ``1.0``/``0.0``; the timing hour/day become ``-1.0`` when the email had no date
+    (their JSON value is ``null``); each auth token is encoded ordinally via
+    :data:`AUTH_ENCODING` (unrecognized/absent → :data:`AUTH_DEFAULT`); everything
+    else is read as a float.
+
+    :param feature_set: the nested ``{header, link, text, timing, auth, ...}`` object
+        as served by ``GET /emails/{id}/features`` (the ``features`` field).
+    :returns: a list of :data:`FEATURE_COUNT` floats in wire order.
+    :raises KeyError: if a feature group named in :data:`FEATURE_NAMES` is absent.
+    """
+    vector: list[float] = []
+    for name in FEATURE_NAMES:
+        group, field = name.split(".", 1)
+        value = feature_set[group].get(field)
+        vector.append(_encode(name, value))
+    return vector
+
+
+def _encode(name: str, value) -> float:
+    if name in _AUTH_NAMES:
+        return AUTH_ENCODING.get(value, AUTH_DEFAULT)
+    if value is None:
+        # Only the timing hour/day legitimately arrive as null; they map to the -1.0
+        # sentinel. Any other null is treated as an absent signal (0.0) rather than
+        # crashing the whole training run on one malformed row.
+        return -1.0 if name in _TIMING_SENTINEL_NAMES else 0.0
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    return float(value)

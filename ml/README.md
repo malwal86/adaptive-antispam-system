@@ -26,6 +26,44 @@ exported corpus + arena features; the serving code does not change.
   the embedding parity fixture.
 - `requirements.txt` — pinned toolchain that produced the checked-in artifacts.
 
+### Retrain pipeline (story 10.02 — scheduled CI train → ONNX → calibrate)
+
+The **slow living loop**: a scheduled GitHub Action (`.github/workflows/retrain.yml`,
+nightly + on-demand) trains a fresh **candidate** from the labeled-data export (story
+10.01), exports it to ONNX, **calibrates** it, and stages a versioned artifact. It
+produces a *candidate only* — promotion is gated separately (10.03 precision floor, 10.04
+flag flip), so nothing here touches the serving path.
+
+- `fetch_training_data.py` — joins the labeled export (`GET /retrain/export`, labels) to
+  per-email feature vectors (`GET /emails/{id}/features`), flattening each `FeatureSet`
+  via `feature_schema.flatten_feature_set` into the trainable export. Examples whose
+  features are missing at the export's `feature_version` are dropped.
+- `feature_schema.flatten_feature_set` — the Python side of the flattening contract;
+  mirrors `ModelFeatureVector.toVector` exactly (same order, sentinels, auth encoding).
+- `train_candidate.py` — validates the export (loud failure → **no** artifact), trains a
+  weighted logistic pipeline on a stratified train split, exports ONNX (self-checked
+  against sklearn through ONNX Runtime — the same engine Java serves with), fits **isotonic
+  calibration** on the held-out split, and writes the candidate + metadata
+  (`model_version`, `feature_version`, `π_train`, provenance counts) + calibration report.
+  The `model_version` is a deterministic hash of the training corpus, so the candidate is
+  reproducible.
+- `sample_corpus.py` — generates `fixtures/sample-training-export.json`, the checked-in
+  fallback corpus the workflow trains on when no live API is configured.
+
+Outputs are written to a **staging directory** (never `src/main/resources`): per candidate,
+`spam-classifier-<version>.onnx`, `…​.metadata.json`, `…​.calibration.json`, and
+`parity-cases.json`. The workflow uploads them as a GitHub artifact and (when Supabase
+credentials are present) stages them to Supabase Storage under `candidates/<version>/`.
+
+Run the pipeline locally against the sample corpus:
+
+```bash
+.venv/bin/python ml/sample_corpus.py                       # (re)generate the fixture
+.venv/bin/python ml/train_candidate.py \
+  --export ml/fixtures/sample-training-export.json --out candidate/
+.venv/bin/python -m pytest ml/tests -q                     # the pipeline's tests
+```
+
 ## Outputs (checked in)
 
 - `../src/main/resources/models/spam-classifier-bootstrap-v1.onnx` — classifier, served by Java.
