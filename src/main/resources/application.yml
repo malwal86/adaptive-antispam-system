@@ -365,6 +365,14 @@ antispam:
     generation-cap: ${ANTISPAM_ARENA_GENERATION_CAP:3}
     budget-usd: ${ANTISPAM_ARENA_BUDGET_USD:1.00}
     cost-per-mutation-usd: ${ANTISPAM_ARENA_COST_PER_MUTATION_USD:0.01}
+    # Bypass measurement vs a fixed baseline + corpus feedback (story 08.04). baseline-policy-version
+    # names the fixed reference defender a run's variants are also scored against for the "danger
+    # missed by baseline" comparison; left blank it defaults to the genesis (oldest) policy, so the
+    # baseline stays a stable anchor across runs as the defender retrains between them (Epic 10).
+    # corpus-label-weight is the training weight stamped on every bypassing variant fed into the
+    # retrain corpus. Both tunable without a redeploy.
+    baseline-policy-version: ${ANTISPAM_ARENA_BASELINE_POLICY_VERSION:}
+    corpus-label-weight: ${ANTISPAM_ARENA_CORPUS_LABEL_WEIGHT:1.0}
   seed:
     enabled: false
     corpus-dir: seed-corpus

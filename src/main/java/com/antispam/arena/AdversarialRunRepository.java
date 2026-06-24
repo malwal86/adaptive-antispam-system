@@ -2,6 +2,7 @@ package com.antispam.arena;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,18 +12,20 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 /**
- * Access to the {@code adversarial_runs} table (story 08.02). A run is written exactly twice: once
- * at {@link #start} when the loop begins (status {@code running}, the config and the captured fixed
- * defender recorded), and once at {@link #complete} when it terminates (the terminal status, the
- * achieved bypass rate, and the consumed bounds). There is no other mutation — the per-generation
- * detail lives in the child {@code adversarial_emails} rows, not here.
+ * Access to the {@code adversarial_runs} table (story 08.02). A run is written in up to three steps:
+ * {@link #start} when the loop begins (status {@code running}, the config and the captured fixed
+ * defender recorded), {@link #complete} when it terminates (the terminal status, the achieved bypass
+ * rate, and the consumed bounds), and {@link #recordBaseline} in the post-loop measurement step (story
+ * 08.04) which stamps the baseline comparison. There is no other mutation — the per-generation detail
+ * lives in the child {@code adversarial_emails} rows, not here.
  */
 @Repository
 public class AdversarialRunRepository {
 
     private static final String COLUMNS = """
             id, attacker_model, defender_model, defender_policy_version,
-            target_bypass_rate, actual_bypass_rate, precision_fp_rate, generation_cap, budget_usd,
+            target_bypass_rate, actual_bypass_rate, precision_fp_rate,
+            baseline_policy_version, baseline_bypass_rate, generation_cap, budget_usd,
             spent_usd, generations_run, status, created_at, completed_at
             """;
 
@@ -40,8 +43,28 @@ public class AdversarialRunRepository {
              where id = ?
             returning """ + COLUMNS;
 
+    private static final String RECORD_BASELINE_SQL = """
+            update adversarial_runs
+               set baseline_policy_version = ?, baseline_bypass_rate = ?
+             where id = ?
+            returning """ + COLUMNS;
+
     private static final String SELECT_BY_ID_SQL =
             "select " + COLUMNS + " from adversarial_runs where id = ?";
+
+    // The most recent terminal runs, returned oldest-first so a reader sees the bypass-rate trend in
+    // chronological order (story 08.04). Only runs that produced a rate are included — a failed run's
+    // partial state would be misleading on a trend line.
+    private static final String SELECT_RECENT_TERMINAL_SQL = "select " + COLUMNS + """
+             from (
+                select """ + COLUMNS + """
+                  from adversarial_runs
+                 where status in ('completed', 'budget_exhausted')
+                 order by created_at desc, id desc
+                 limit ?
+            ) recent
+            order by created_at, id
+            """;
 
     private final JdbcTemplate jdbc;
 
@@ -81,6 +104,21 @@ public class AdversarialRunRepository {
                 actualBypassRate, precisionFpRate, spentUsd, generationsRun, status.dbValue(), runId);
     }
 
+    /**
+     * Stamps the baseline comparison on a terminated run (story 08.04): the fixed baseline defender the
+     * run's variants were also scored against and the bypass rate they achieved under it. Called once,
+     * in the post-loop measurement step, after {@link #complete}.
+     *
+     * @param baselinePolicyVersion the fixed reference defender, or null if none was resolvable
+     * @param baselineBypassRate    the Track A bypass rate under that baseline in [0,1], or null if no
+     *                              baseline ran or the run had no Track A
+     */
+    public AdversarialRun recordBaseline(UUID runId, String baselinePolicyVersion,
+            Double baselineBypassRate) {
+        return jdbc.queryForObject(RECORD_BASELINE_SQL, RUN_MAPPER,
+                baselinePolicyVersion, baselineBypassRate, runId);
+    }
+
     public Optional<AdversarialRun> findById(UUID id) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(SELECT_BY_ID_SQL, RUN_MAPPER, id));
@@ -89,11 +127,20 @@ public class AdversarialRunRepository {
         }
     }
 
+    /**
+     * The {@code limit} most recent terminal runs, oldest-first — the cross-run bypass-rate trend
+     * (story 08.04, AC 4). Failed runs are excluded; their partial state has no meaningful rate.
+     */
+    public List<AdversarialRun> findRecentTerminal(int limit) {
+        return jdbc.query(SELECT_RECENT_TERMINAL_SQL, RUN_MAPPER, limit);
+    }
+
     private static final RowMapper<AdversarialRun> RUN_MAPPER = (rs, rowNum) -> {
         OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
         OffsetDateTime completedAt = rs.getObject("completed_at", OffsetDateTime.class);
         Double actual = rs.getObject("actual_bypass_rate", Double.class);
         Double precisionFp = rs.getObject("precision_fp_rate", Double.class);
+        Double baselineBypass = rs.getObject("baseline_bypass_rate", Double.class);
         return new AdversarialRun(
                 rs.getObject("id", UUID.class),
                 rs.getString("attacker_model"),
@@ -102,6 +149,8 @@ public class AdversarialRunRepository {
                 rs.getDouble("target_bypass_rate"),
                 actual,
                 precisionFp,
+                rs.getString("baseline_policy_version"),
+                baselineBypass,
                 rs.getInt("generation_cap"),
                 rs.getBigDecimal("budget_usd"),
                 rs.getBigDecimal("spent_usd"),

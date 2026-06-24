@@ -18,6 +18,10 @@ import java.util.UUID;
  * @param actualBypassRate      the Track A recall bypass rate, or null while running / if no Track A ran
  * @param precisionFpRate       the Track B precision false-positive rate (story 08.02b), or null while
  *                              running / if no Track B ran
+ * @param baselinePolicyVersion the fixed baseline defender the variants were also scored against (story
+ *                              08.04), or null until measured
+ * @param baselineBypassRate    the bypass rate under that baseline — "danger missed by baseline", or
+ *                              null until measured / if no Track A ran
  * @param generationCap         the hard generation cap (1–5)
  * @param generationsRun        how many generations actually ran
  * @param budgetUsd             the hard spend ceiling
@@ -34,6 +38,8 @@ public record AttackRunResponse(
         double targetBypassRate,
         Double actualBypassRate,
         Double precisionFpRate,
+        String baselinePolicyVersion,
+        Double baselineBypassRate,
         int generationCap,
         int generationsRun,
         BigDecimal budgetUsd,
@@ -51,6 +57,8 @@ public record AttackRunResponse(
                 run.targetBypassRate(),
                 run.actualBypassRate(),
                 run.precisionFpRate(),
+                run.baselinePolicyVersion(),
+                run.baselineBypassRate(),
                 run.generationCap(),
                 run.generationsRun(),
                 run.budgetUsd(),

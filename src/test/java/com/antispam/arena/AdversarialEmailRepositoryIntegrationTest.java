@@ -17,7 +17,8 @@ import org.springframework.beans.factory.annotation.Autowired;
  * verdict is stamped per variant, and the wrongly-blocked legit variants are captured — still labeled
  * ham, with run provenance — as the precision-floor retrain corpus (AC 4, Epic 10/11). The capture
  * query returns only the ham variants the defender withheld: delivered ham (no false positive) and
- * blocked abuse (a correct catch, not good mail) are both excluded.
+ * blocked abuse (a correct catch, not good mail) are both excluded. Its mirror, the bypassing-abuse
+ * capture for the recall corpus, is story 08.04.
  */
 class AdversarialEmailRepositoryIntegrationTest extends AbstractPostgresIntegrationTest {
 
@@ -53,6 +54,26 @@ class AdversarialEmailRepositoryIntegrationTest extends AbstractPostgresIntegrat
         assertThat(variants.findWronglyBlockedHam(run.id()))
                 .extracting(AdversarialEmail::id)
                 .containsExactly(blockedHam.id());
+    }
+
+    @Test
+    void captures_only_the_abuse_variants_the_defender_delivered() {
+        AdversarialRun run = runs.start("attacker-x", "model-7", "pol-active",
+                0.5, 3, new BigDecimal("1.00"));
+        UUID seed = ingest("seed for the family");
+
+        AdversarialEmail bypassedSpam = save(run.id(), GroundTruthLabel.SPAM, MutationStrategy.SYNONYM, seed);
+        AdversarialEmail caughtSpam = save(run.id(), GroundTruthLabel.SPAM, MutationStrategy.STRUCTURE, seed);
+        AdversarialEmail deliveredHam = save(run.id(), GroundTruthLabel.HAM, MutationStrategy.SYNONYM, seed);
+
+        variants.recordDefenderOutcome(bypassedSpam.id(), true);   // abuse delivered → a bypass
+        variants.recordDefenderOutcome(caughtSpam.id(), false);    // abuse withheld → a correct catch
+        variants.recordDefenderOutcome(deliveredHam.id(), true);   // good mail delivered → correct, not a bypass
+
+        // Only the abuse the defender let through is captured for the recall (bypass) corpus (story 08.04).
+        assertThat(variants.findBypassingAbuse(run.id()))
+                .extracting(AdversarialEmail::id)
+                .containsExactly(bypassedSpam.id());
     }
 
     private AdversarialEmail save(UUID runId, GroundTruthLabel label, MutationStrategy strategy, UUID seed) {

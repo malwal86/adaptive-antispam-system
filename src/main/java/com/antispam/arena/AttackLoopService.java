@@ -62,18 +62,20 @@ public class AttackLoopService {
     private final EmailRepository emails;
     private final AdversarialRunRepository runs;
     private final AdversarialEmailRepository variants;
+    private final BypassMeasurementService measurement;
     private final ArenaProperties properties;
 
     @Autowired
     public AttackLoopService(MutationService mutations, PolicyScorer scorer, PolicyRepository policies,
             EmailRepository emails, AdversarialRunRepository runs, AdversarialEmailRepository variants,
-            ArenaProperties properties) {
+            BypassMeasurementService measurement, ArenaProperties properties) {
         this.mutations = mutations;
         this.scorer = scorer;
         this.policies = policies;
         this.emails = emails;
         this.runs = runs;
         this.variants = variants;
+        this.measurement = measurement;
         this.properties = properties;
     }
 
@@ -100,12 +102,30 @@ public class AttackLoopService {
         try {
             AdversarialRun done = loop(run, config, defender, budget, tally);
             finalized = true;
-            return done;
+            // The loop has terminated and recorded the current defender's bypass rate; now measure the
+            // run against the fixed baseline and feed its bypassing variants into the retrain corpus
+            // (story 08.04). This is the durable, demoable outcome of a campaign, so it is part of
+            // running one — not a separate call a caller must remember to make.
+            return measure(done);
         } finally {
             // Never leave a run dangling: an unexpected failure (e.g. attacker outage) finalizes it.
             if (!finalized) {
                 finish(run, tally, budget, RunStatus.FAILED);
             }
+        }
+    }
+
+    /**
+     * Measures the terminated run against the baseline and feeds the corpus (story 08.04). A measurement
+     * failure must not undo a campaign that already completed and recorded its result, so it is logged
+     * and the un-baselined run is returned rather than propagated.
+     */
+    private AdversarialRun measure(AdversarialRun done) {
+        try {
+            return measurement.measure(done);
+        } catch (RuntimeException e) {
+            log.warn("run {} completed but bypass measurement failed: {}", done.id(), e.getMessage(), e);
+            return done;
         }
     }
 

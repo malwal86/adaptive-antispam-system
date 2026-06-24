@@ -57,6 +57,13 @@ public class AdversarialEmailRepository {
             order by generation, created_at, id
             """;
 
+    /** The Track A bypass corpus: abuse variants the fixed defender delivered to the inbox (story 08.04). */
+    private static final String SELECT_BYPASSING_ABUSE_BY_RUN_SQL = "select " + COLUMNS + """
+             from adversarial_emails
+            where run_id = ? and ground_truth_label in ('spam', 'phish') and defender_delivered = true
+            order by generation, created_at, id
+            """;
+
     private static final String RECORD_OUTCOME_SQL =
             "update adversarial_emails set defender_delivered = ? where id = ?";
 
@@ -127,6 +134,15 @@ public class AdversarialEmailRepository {
      */
     public List<AdversarialEmail> findWronglyBlockedHam(UUID runId) {
         return jdbc.query(SELECT_BLOCKED_HAM_BY_RUN_SQL, ADVERSARIAL_EMAIL_MAPPER, runId);
+    }
+
+    /**
+     * The abuse (spam/phish) variants a run's fixed defender <em>delivered to the inbox</em> — the
+     * bypasses (story 08.04, AC 3). These are fed back, labeled with their preserved abuse class and
+     * arena provenance, into the retrain corpus so the next model is harder (Epic 10).
+     */
+    public List<AdversarialEmail> findBypassingAbuse(UUID runId) {
+        return jdbc.query(SELECT_BYPASSING_ABUSE_BY_RUN_SQL, ADVERSARIAL_EMAIL_MAPPER, runId);
     }
 
     private Optional<AdversarialEmail> findByVariantEmailId(UUID variantEmailId) {

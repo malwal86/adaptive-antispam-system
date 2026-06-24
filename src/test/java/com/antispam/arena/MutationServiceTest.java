@@ -51,7 +51,7 @@ class MutationServiceTest {
 
     private MutationService service() {
         return new MutationService(emails, labels, attacker, ingest, variants,
-                new ArenaProperties(true, "attacker-x", 3, null, null));
+                new ArenaProperties(true, "attacker-x", 3, null, null, null, 1.0));
     }
 
     private static final UUID SEED_ID = UUID.randomUUID();
