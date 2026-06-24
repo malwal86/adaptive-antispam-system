@@ -11,6 +11,9 @@ import com.antispam.retrain.RetrainLabel;
 import com.antispam.retrain.RetrainLabelRepository;
 import com.antispam.seed.GroundTruthLabel;
 import com.antispam.seed.GroundTruthLabelRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -88,7 +91,13 @@ class BypassMeasurementIntegrationTest extends AbstractPostgresIntegrationTest {
                 RetrainLabel label = arenaLabels.get(0);
                 assertThat(label.label()).isEqualTo(variant.label()); // ground truth preserved
                 assertThat(label.weight()).isGreaterThan(0.0);
-                assertThat(label.provenance()).contains("\"runId\":\"" + run.id() + "\"");
+                // Provenance is JSONB: Postgres reserializes it (spacing, key order), so parse and
+                // assert the value rather than substring-matching the raw text.
+                JsonNode provenance = readJson(label.provenance());
+                assertThat(provenance.get("runId").asText()).isEqualTo(run.id().toString());
+                assertThat(provenance.get("variantId").asText()).isEqualTo(variant.id().toString());
+                assertThat(provenance.get("outcome").asText())
+                        .isEqualTo(variant.track() == Track.SPAM ? "bypass" : "false_positive");
             } else {
                 assertThat(arenaLabels).isEmpty();
             }
@@ -107,6 +116,14 @@ class BypassMeasurementIntegrationTest extends AbstractPostgresIntegrationTest {
     private static boolean beatDefender(AdversarialEmail variant) {
         boolean delivered = Boolean.TRUE.equals(variant.defenderDelivered());
         return variant.track() == Track.SPAM ? delivered : !delivered;
+    }
+
+    private static JsonNode readJson(String json) {
+        try {
+            return new ObjectMapper().readTree(json);
+        } catch (JsonProcessingException e) {
+            throw new AssertionError("provenance was not valid JSON: " + json, e);
+        }
     }
 
     private UUID seed(String tag, String from, String body, GroundTruthLabel label) {
