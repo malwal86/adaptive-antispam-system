@@ -395,6 +395,17 @@ antispam:
     max-ece: 0.10
     bins: 10
     min-samples-per-side: 50
+  # The retrain promotion gate (story 10.03). A candidate (10.02) is replayed over the frozen
+  # golden (eval-side) set and must clear precision-floor before it can be promoted (10.04).
+  # Precision is the HARD gate — a false positive is blocked good mail, the one regression the
+  # system must never allow — so it is the only auto-blocker; recall, bypass-rate, and cost are
+  # reported as evidence but never block. The floor is set high for that reason. min-golden-samples
+  # refuses a verdict on a golden set too small for precision to mean anything (the same honesty as
+  # calibration's min-samples-per-side). Tunable here, not in code.
+  retrain:
+    gate:
+      precision-floor: ${ANTISPAM_RETRAIN_GATE_PRECISION_FLOOR:0.95}
+      min-golden-samples: ${ANTISPAM_RETRAIN_GATE_MIN_GOLDEN_SAMPLES:50}
   hard-rules:
     url-denylist:
       - malware.example

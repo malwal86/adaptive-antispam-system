@@ -59,6 +59,24 @@ public class ReplayDecisionRepository {
             order by r.email_id
             """;
 
+    // The promotion gate's grading join (story 10.03): the 09.04 join further restricted to the
+    // held-out golden set — the eval side of the train/eval split. Evaluating a retrain candidate on
+    // anything it could have trained on would inflate precision, so the gate must judge only mail the
+    // model never saw. A row contributes only if it is both labeled and on the eval side; an email
+    // with no split assignment (or on the train side) is excluded by the inner join.
+    private static final String SELECT_LABELED_BY_RUN_IN_GOLDEN_SET_SQL = """
+            select r.email_id       as email_id,
+                   r.decision       as decision,
+                   r.route_used     as route_used,
+                   r.policy_version as policy_version,
+                   g.label          as label
+            from replay_decisions r
+            join ground_truth_labels g on g.email_id = r.email_id
+            join eval_split_assignments a on a.email_id = r.email_id and a.split_side = 'eval'
+            where r.run_id = ?
+            order by r.email_id
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Autowired
@@ -107,6 +125,16 @@ public class ReplayDecisionRepository {
      */
     public List<LabeledReplayDecision> findLabeledByRunId(UUID runId) {
         return jdbc.query(SELECT_LABELED_BY_RUN_SQL, LABELED_DECISION_MAPPER, runId);
+    }
+
+    /**
+     * A run's decisions joined to ground truth and restricted to the golden (eval-side) set, for the
+     * promotion gate (story 10.03). Same shape and ordering as {@link #findLabeledByRunId} but only
+     * held-out emails contribute, so a retrain candidate is graded on mail it could not have trained
+     * on — the version-comparable, leakage-free basis the precision floor is measured against.
+     */
+    public List<LabeledReplayDecision> findLabeledByRunIdInGoldenSet(UUID runId) {
+        return jdbc.query(SELECT_LABELED_BY_RUN_IN_GOLDEN_SET_SQL, LABELED_DECISION_MAPPER, runId);
     }
 
     private static final RowMapper<ReplayDecision> REPLAY_DECISION_MAPPER = (rs, rowNum) -> {
