@@ -12,9 +12,9 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "Abuse Lab — Single-Email Analyzer",
+  title: "Abuse Lab — Living Anti-Spam System",
   description:
-    "Paste or pick an email and see the Living Anti-Spam System's decision: tier, reason codes, route, and latency.",
+    "A live, three-pane abuse lab over the Living Anti-Spam System: decisions stream in as the pipeline makes them.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

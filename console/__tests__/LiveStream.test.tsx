@@ -1,0 +1,50 @@
+import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { LiveStream } from "@/components/lab/LiveStream";
+import type { AnalyzeResponse } from "@/lib/api";
+
+function decision(overrides: Partial<AnalyzeResponse> = {}): AnalyzeResponse {
+  return {
+    emailId: "d7db7c1d-59aa-4e88-83a3-895c13b39907",
+    classificationId: "b5c0b6eb-64d5-4932-97a0-33fd65576adf",
+    tier: "block",
+    reasonCodes: ["KNOWN_BAD_URL"],
+    routeUsed: "hard_rule",
+    latencyMs: 2,
+    explanation: "Blocked.",
+    decidedAt: "2026-06-05T12:00:00Z",
+    duplicate: false,
+    ...overrides,
+  };
+}
+
+describe("LiveStream", () => {
+  it("shows the waiting empty state with no decisions", () => {
+    render(<LiveStream decisions={[]} status="open" />);
+    expect(screen.getByTestId("stream-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("live-decision-card")).not.toBeInTheDocument();
+  });
+
+  it("reflects the connection status", () => {
+    render(<LiveStream decisions={[]} status="reconnecting" />);
+    expect(screen.getByTestId("stream-status")).toHaveAttribute("data-status", "reconnecting");
+  });
+
+  it("renders a card per decision, tier-coded, newest-first", () => {
+    render(
+      <LiveStream
+        status="open"
+        decisions={[
+          decision({ classificationId: "b", tier: "block" }),
+          decision({ classificationId: "a", tier: "allow", reasonCodes: [], routeUsed: "model" }),
+        ]}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("live-decision-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveAttribute("data-tier", "block");
+    expect(cards[1]).toHaveAttribute("data-tier", "allow");
+    expect(screen.getByText("Known-bad URL")).toBeInTheDocument();
+  });
+});

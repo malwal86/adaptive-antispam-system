@@ -47,7 +47,7 @@ async function stubApi(page: Page) {
 
 test("paste an email, submit, and see the tier badge and reason chip", async ({ page }) => {
   await stubApi(page);
-  await page.goto("/");
+  await page.goto("/analyzer");
 
   await expect(page.getByTestId("empty-state")).toBeVisible();
 
@@ -66,7 +66,7 @@ test("paste an email, submit, and see the tier badge and reason chip", async ({ 
 
 test("pick a labeled seed sample and a decision renders", async ({ page }) => {
   await stubApi(page);
-  await page.goto("/");
+  await page.goto("/analyzer");
 
   await page.getByTestId("sample-chip").first().click();
 

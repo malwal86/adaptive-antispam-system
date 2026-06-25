@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
@@ -75,6 +76,7 @@ public class DecisionService {
     private final LlmProperties llmProperties;
     private final QuarantinePendingService quarantinePendingService;
     private final ShadowScoringService shadowScoringService;
+    private final ApplicationEventPublisher events;
 
     @Autowired
     public DecisionService(
@@ -87,7 +89,8 @@ public class DecisionService {
             LlmFallbackService llmFallbackService,
             LlmProperties llmProperties,
             QuarantinePendingService quarantinePendingService,
-            ShadowScoringService shadowScoringService) {
+            ShadowScoringService shadowScoringService,
+            ApplicationEventPublisher events) {
         this.hardRuleEngine = hardRuleEngine;
         this.circuitBreaker = circuitBreaker;
         this.contentClassifier = contentClassifier;
@@ -98,6 +101,7 @@ public class DecisionService {
         this.llmProperties = llmProperties;
         this.quarantinePendingService = quarantinePendingService;
         this.shadowScoringService = shadowScoringService;
+        this.events = events;
     }
 
     /**
@@ -154,6 +158,7 @@ public class DecisionService {
             log.info("quarantine-pending email={} route={} provisional={} routingReasons={} policy={}",
                     email.id(), RouteUsed.LLM, pending.decision(), tiered.routingReasons(),
                     tiered.policyVersion());
+            publish(pending);
             return pending;
         }
 
@@ -184,6 +189,21 @@ public class DecisionService {
                 fused == null ? null : fused.posterior(), tiered.policyVersion(),
                 llm == null || llm.degraded() ? null : llm.verdict().verdict(),
                 llm == null ? null : llm.degraded(), llmCostUsd);
+        publish(classification);
         return classification;
+    }
+
+    /**
+     * Announces a recorded decision to in-process live consumers (the console's decision stream,
+     * Epic 12). Best-effort and off the critical path: the decision is already persisted, so a
+     * publication failure must never fail the decision.
+     */
+    private void publish(Classification classification) {
+        try {
+            events.publishEvent(new DecisionMadeEvent(classification));
+        } catch (RuntimeException e) {
+            log.warn("decision-stream publish failed for email={} (decision still recorded)",
+                    classification.emailId(), e);
+        }
     }
 }
