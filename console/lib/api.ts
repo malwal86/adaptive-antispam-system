@@ -61,7 +61,7 @@ export async function fetchSamples(perLabel = 4): Promise<SeedSample[]> {
   return (await res.json()) as SeedSample[];
 }
 
-async function errorMessage(res: Response): Promise<string> {
+export async function errorMessage(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as { error?: string };
     if (body?.error) {

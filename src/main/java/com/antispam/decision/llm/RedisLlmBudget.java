@@ -84,11 +84,14 @@ public class RedisLlmBudget implements LlmBudget {
 
     private final StringRedisTemplate redis;
     private final LlmBudgetProperties properties;
+    private final LlmBudgetCaps caps;
     private final Clock clock;
 
-    public RedisLlmBudget(StringRedisTemplate redis, LlmBudgetProperties properties, Clock clock) {
+    public RedisLlmBudget(
+            StringRedisTemplate redis, LlmBudgetProperties properties, LlmBudgetCaps caps, Clock clock) {
         this.redis = redis;
         this.properties = properties;
+        this.caps = caps;
         this.clock = clock;
     }
 
@@ -97,13 +100,16 @@ public class RedisLlmBudget implements LlmBudget {
         String dayKey = dayKey(clock);
         String monthKey = monthKey(clock);
         BigDecimal reserved = BigDecimal.valueOf(properties.perCallReservationUsd());
+        // The caps are read live (story 12.02) so a console cap change applies to the next call;
+        // the per-call reservation stays a fixed config value.
+        LlmBudgetCaps.Caps current = caps.current();
         try {
             Long code = redis.execute(
                     RESERVE_LUA,
                     List.of(dayKey, monthKey),
                     Double.toString(properties.perCallReservationUsd()),
-                    Double.toString(properties.dailyCapUsd()),
-                    Double.toString(properties.monthlyCapUsd()),
+                    Double.toString(current.dailyCapUsd()),
+                    Double.toString(current.monthlyCapUsd()),
                     Long.toString(DAY_TTL.toSeconds()),
                     Long.toString(MONTH_TTL.toSeconds()));
             return interpret(code, reserved, dayKey, monthKey);

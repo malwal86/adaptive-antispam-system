@@ -36,6 +36,19 @@ function streamBody(): string {
   );
 }
 
+const POLICY = {
+  version: "bootstrap-v1",
+  active: true,
+  warnThreshold: 0.3,
+  quarantineThreshold: 0.6,
+  blockThreshold: 0.85,
+  llmThreshold: 0.5,
+  routingBandWidth: 0.05,
+  burstThreshold: 5,
+  modelVersion: "model-v1",
+  createdAt: "2026-06-01T00:00:00Z",
+};
+
 async function stubStream(page: Page, onRequest?: () => void) {
   await page.route(`${API}/decisions/stream`, (route) => {
     onRequest?.();
@@ -47,11 +60,23 @@ async function stubStream(page: Page, onRequest?: () => void) {
   });
 }
 
+async function stubControls(page: Page, onThresholds?: (body: unknown) => void) {
+  await page.route(`${API}/controls/policies`, (route) => route.fulfill({ json: [POLICY] }));
+  await page.route(`${API}/controls/budget`, (route) =>
+    route.fulfill({ json: { enabled: false, dailyCapUsd: 0.5, monthlyCapUsd: 5 } }),
+  );
+  await page.route(`${API}/controls/thresholds`, (route) => {
+    onThresholds?.(route.request().postDataJSON());
+    return route.fulfill({ json: { ...POLICY, version: "console-1", warnThreshold: 0.1 } });
+  });
+}
+
 test("renders three panes and streams decisions in live, newest-first", async ({ page }) => {
   await stubStream(page);
+  await stubControls(page);
   await page.goto("/");
 
-  await expect(page.getByTestId("left-rail")).toBeVisible();
+  await expect(page.getByTestId("controls-rail")).toBeVisible();
   await expect(page.getByTestId("center-stream")).toBeVisible();
   await expect(page.getByTestId("right-rail")).toBeVisible();
   await expect(page.getByTestId("stream-status")).toBeVisible();
@@ -63,11 +88,28 @@ test("renders three panes and streams decisions in live, newest-first", async ({
   await expect(cards.nth(1)).toHaveAttribute("data-tier", "block");
 });
 
+test("a threshold change posts new thresholds and is acknowledged", async ({ page }) => {
+  let posted: unknown = null;
+  await stubStream(page);
+  await stubControls(page, (body) => {
+    posted = body;
+  });
+  await page.goto("/");
+
+  // Lower the warn threshold, then apply — a real reconfiguration call, acknowledged in the UI.
+  await page.getByTestId("warn-slider").fill("0.1");
+  await page.getByTestId("apply-thresholds").click();
+
+  await expect(page.getByTestId("apply-status").first()).toHaveAttribute("data-status", "applied");
+  expect(posted).toMatchObject({ warnThreshold: 0.1 });
+});
+
 test("auto-reconnects when the connection drops, without duplicating cards", async ({ page }) => {
   let requests = 0;
   await stubStream(page, () => {
     requests += 1;
   });
+  await stubControls(page);
   await page.goto("/");
 
   await expect(page.getByTestId("live-decision-card")).toHaveCount(2);

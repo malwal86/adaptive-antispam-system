@@ -2,6 +2,7 @@ package com.antispam.decision.policy;
 
 import com.antispam.common.JdbcTimestamps;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -62,6 +63,13 @@ public class PolicyRepository {
             limit 1
             """;
 
+    private static final String SELECT_ALL_SQL = """
+            select version, active, warn_threshold, quarantine_threshold, block_threshold,
+                   llm_threshold, routing_band_width, burst_threshold, model_version, created_at
+            from policies
+            order by created_at desc, version desc
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Autowired
@@ -72,6 +80,11 @@ public class PolicyRepository {
     /** The one enforcing regime, or empty if none is active (a misconfiguration). */
     public Optional<Policy> findActive() {
         return jdbc.query(SELECT_ACTIVE_SQL, POLICY_MAPPER).stream().findFirst();
+    }
+
+    /** Every policy, newest first — the catalogue the console's policy selector offers. */
+    public List<Policy> findAll() {
+        return jdbc.query(SELECT_ALL_SQL, POLICY_MAPPER);
     }
 
     public Optional<Policy> findByVersion(String version) {

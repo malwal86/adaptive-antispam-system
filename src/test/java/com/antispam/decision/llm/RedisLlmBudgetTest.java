@@ -43,7 +43,8 @@ class RedisLlmBudgetTest {
     private ValueOperations<String, String> valueOps;
 
     private RedisLlmBudget budget() {
-        return new RedisLlmBudget(redis, PROPS, FIXED);
+        // Caps seeded from the same properties, so behaviour matches the pre-12.02 static caps.
+        return new RedisLlmBudget(redis, PROPS, new LlmBudgetCaps(PROPS), FIXED);
     }
 
     @SuppressWarnings("unchecked")

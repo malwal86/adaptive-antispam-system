@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
+import { ControlsRail } from "@/components/lab/controls/ControlsRail";
 import { LiveStream } from "@/components/lab/LiveStream";
 import { RailPanel } from "@/components/lab/RailPanel";
 import { useDecisionStream } from "@/lib/useDecisionStream";
@@ -42,12 +43,7 @@ export function LabConsole() {
       </header>
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)_340px]">
-        <RailPanel
-          data-testid="left-rail"
-          title="Controls"
-          icon="tune"
-          upcoming="Scenario, policy, and threshold controls arrive in story 12.02."
-        />
+        <ControlsRail />
 
         <div className="flex min-h-0 flex-col rounded-lg border border-outline/50 bg-surface-container/40 p-4">
           <LiveStream decisions={decisions} status={status} />
