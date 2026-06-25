@@ -4,6 +4,7 @@ import {
   applyThresholds,
   fetchPolicies,
   isMonotonicLadder,
+  startScenario,
   thresholdsOf,
   updateBudget,
   type PolicySummary,
@@ -104,6 +105,15 @@ describe("controls client", () => {
       dailyCapUsd: 0.2,
       monthlyCapUsd: 4,
     });
+  });
+
+  it("startScenario POSTs to the start endpoint with an encoded name and returns the run", async () => {
+    const f = mockFetch({ scenario: "sender_warms_up_then_attacks", steps: 18, seed: 42 });
+    const run = await startScenario("sender_warms_up_then_attacks");
+    const [url, init] = f.mock.calls[0];
+    expect(url).toContain("/controls/scenarios/sender_warms_up_then_attacks/start");
+    expect(init).toMatchObject({ method: "POST" });
+    expect(run.steps).toBe(18);
   });
 
   it("throws on a non-ok response", async () => {

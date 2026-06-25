@@ -12,6 +12,7 @@ import {
   applyThresholds,
   fetchBudget,
   fetchPolicies,
+  startScenario,
   thresholdsOf,
   updateBudget,
   type BudgetCaps,
@@ -32,6 +33,7 @@ export function ControlsRail() {
   const [budget, setBudget] = useState<BudgetCaps | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [scenarioStatus, setScenarioStatus] = useState<ApplyStatus>("idle");
   const [policyStatus, setPolicyStatus] = useState<ApplyStatus>("idle");
   const [thresholdStatus, setThresholdStatus] = useState<ApplyStatus>("idle");
   const [budgetStatus, setBudgetStatus] = useState<ApplyStatus>("idle");
@@ -69,6 +71,11 @@ export function ControlsRail() {
     [],
   );
 
+  const onStartScenario = (scenario: string) =>
+    run(setScenarioStatus, async () => {
+      await startScenario(scenario);
+    });
+
   const onActivate = (version: string) =>
     run(setPolicyStatus, async () => {
       await activatePolicy(version);
@@ -104,7 +111,7 @@ export function ControlsRail() {
         </p>
       )}
 
-      <ScenarioSection />
+      <ScenarioSection onStart={onStartScenario} status={scenarioStatus} />
 
       {policies === null || budget === null ? (
         <p className="text-body-md text-on-surface-variant" data-testid="controls-loading">
