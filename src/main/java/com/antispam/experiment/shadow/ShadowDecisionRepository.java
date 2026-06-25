@@ -1,5 +1,6 @@
 package com.antispam.experiment.shadow;
 
+import com.antispam.common.JdbcParams;
 import com.antispam.common.JdbcTimestamps;
 import com.antispam.decision.Decision;
 import com.antispam.decision.RouteUsed;
@@ -75,8 +76,8 @@ public class ShadowDecisionRepository {
             ps.setString(6, shadow.decision().name());
             ps.setString(7, active.route().name());
             ps.setString(8, shadow.route().name());
-            setNullableDouble(ps, 9, active.posterior());
-            setNullableDouble(ps, 10, shadow.posterior());
+            JdbcParams.setNullableDouble(ps, 9, active.posterior());
+            JdbcParams.setNullableDouble(ps, 10, shadow.posterior());
             ps.setString(11, diff.agreement().name());
             ps.setString(12, diff.direction().name());
             return ps;
@@ -118,15 +119,6 @@ public class ShadowDecisionRepository {
     public record AgreementStats(
             String activePolicyVersion, String shadowPolicyVersion, long total, long agree,
             long disagree, long shadowMoreSevere, long shadowLessSevere) {
-    }
-
-    private static void setNullableDouble(java.sql.PreparedStatement ps, int index, Double value)
-            throws java.sql.SQLException {
-        if (value == null) {
-            ps.setNull(index, java.sql.Types.DOUBLE);
-        } else {
-            ps.setDouble(index, value);
-        }
     }
 
     private static final RowMapper<ShadowDecision> SHADOW_DECISION_MAPPER = (rs, rowNum) -> {

@@ -16,8 +16,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -44,8 +42,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @Component
 public class DecisionStream {
-
-    private static final Logger log = LoggerFactory.getLogger(DecisionStream.class);
 
     /** Recent decisions retained for reconnect replay. Generous enough for a demo's burst. */
     private static final int DEFAULT_BUFFER_CAPACITY = 512;
