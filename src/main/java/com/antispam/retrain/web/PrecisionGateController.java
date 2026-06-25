@@ -13,11 +13,15 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The precision-floor promotion gate endpoint (story 10.03).
  *
- * <p>{@code GET /retrain/gate?run=<replay-run-id>} grades a completed candidate replay on the frozen
- * golden set and returns the {@link GateResult}: whether the candidate cleared the precision floor,
- * the precision-vs-floor it turned on, and the reported (non-blocking) recall/bypass/cost evidence. It
- * is a pure, deterministic read, so the scheduled retrain pipeline (10.02/10.04) can poll it to decide
+ * <p>{@code GET /retrain/gate?run=<replay-run-id>} grades a completed candidate replay on the golden
+ * set and returns the {@link GateResult}: whether the candidate cleared the precision floor, the
+ * precision-vs-floor it turned on, and the reported (non-blocking) recall/bypass/cost evidence. It is a
+ * pure, deterministic read, so the scheduled retrain pipeline (10.02/10.04) can poll it to decide
  * whether to promote a candidate the same way the deploy smoke tests curl the other endpoints.
+ *
+ * <p>An optional {@code &goldenVersion=<version>} pins the grading to a FROZEN golden version (story
+ * 11.02) instead of the live eval side, so the precision is comparable across model versions. Without
+ * it, the gate grades on the current eval-side golden set, preserving the 10.03 behavior.
  *
  * <p>The verdict is returned as the domain {@link GateResult} unchanged — the same shape the registry
  * + flag flip (10.04) acts on — so the REST surface and the promotion step read one shape, not two
@@ -35,7 +39,9 @@ public class PrecisionGateController {
     }
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public GateResult evaluate(@RequestParam("run") UUID run) {
-        return service.evaluate(run);
+    public GateResult evaluate(
+            @RequestParam("run") UUID run,
+            @RequestParam(value = "goldenVersion", required = false) String goldenVersion) {
+        return goldenVersion == null ? service.evaluate(run) : service.evaluate(run, goldenVersion);
     }
 }

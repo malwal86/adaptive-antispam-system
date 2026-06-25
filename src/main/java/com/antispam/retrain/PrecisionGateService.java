@@ -54,9 +54,32 @@ public class PrecisionGateService {
      */
     public GateResult evaluate(UUID candidateRunId) {
         List<LabeledReplayDecision> golden = decisions.findLabeledByRunIdInGoldenSet(candidateRunId);
+        return grade(candidateRunId, "live eval side", golden);
+    }
+
+    /**
+     * Grades a completed candidate replay against a FROZEN golden version and applies the precision
+     * floor (story 11.02). Identical to {@link #evaluate(UUID)} except the held-out set is the immutable
+     * snapshot named by {@code goldenVersion} — so the same candidate, re-graded against the same
+     * version after a future retrain, is measured on byte-identical emails and the precision is
+     * comparable across model versions.
+     *
+     * @param candidateRunId the replay run that scored the candidate over the corpus
+     * @param goldenVersion  the frozen golden version to grade against
+     * @return the gate verdict — pass/fail plus the precision, floor, and reported evidence
+     * @throws IllegalStateException if the run has no graded decisions in that version yet
+     */
+    public GateResult evaluate(UUID candidateRunId, String goldenVersion) {
+        List<LabeledReplayDecision> golden =
+                decisions.findLabeledByRunIdInGoldenVersion(candidateRunId, goldenVersion);
+        return grade(candidateRunId, "golden version " + goldenVersion, golden);
+    }
+
+    /** Resolves the candidate's model version onto the verdict and applies the floor. */
+    private GateResult grade(UUID candidateRunId, String basis, List<LabeledReplayDecision> golden) {
         if (golden.isEmpty()) {
             throw new IllegalStateException(
-                    "no golden-set decisions for replay run " + candidateRunId
+                    "no golden-set decisions for replay run " + candidateRunId + " on " + basis
                             + " (run not yet consumed, or no golden eval set is materialized)");
         }
 
@@ -66,9 +89,9 @@ public class PrecisionGateService {
         String modelVersion = policies.findByVersion(policyVersion).map(Policy::modelVersion).orElse(null);
 
         GateResult result = gate.evaluate(PolicyMetrics.of(policyVersion, modelVersion, golden));
-        log.info("precision gate run={} policy={} model={} precision={} floor={} passed={} ({})",
-                candidateRunId, policyVersion, modelVersion, result.precision(), result.precisionFloor(),
-                result.passed(), result.reason());
+        log.info("precision gate run={} basis='{}' policy={} model={} precision={} floor={} passed={} ({})",
+                candidateRunId, basis, policyVersion, modelVersion, result.precision(),
+                result.precisionFloor(), result.passed(), result.reason());
         return result;
     }
 }
