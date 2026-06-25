@@ -1,9 +1,11 @@
 package com.antispam.decision;
 
+import com.antispam.common.JdbcTimestamps;
 import com.antispam.experiment.ExperimentContext;
 import java.math.BigDecimal;
 import java.sql.Array;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -122,21 +124,18 @@ public class ClassificationRepository {
         return jdbc.query(SELECT_BY_EMAIL_SQL, CLASSIFICATION_MAPPER, emailId);
     }
 
-    private static final RowMapper<Classification> CLASSIFICATION_MAPPER = (rs, rowNum) -> {
-        OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
-        return new Classification(
-                rs.getObject("id", UUID.class),
-                rs.getObject("email_id", UUID.class),
-                Decision.valueOf(rs.getString("decision")),
-                reasonCodes(rs.getArray("reason_codes")),
-                RouteUsed.valueOf(rs.getString("route_used")),
-                rs.getLong("latency_ms"),
-                modelScores(rs),
-                fusedScore(rs),
-                rs.getString("policy_version"),
-                rs.getBigDecimal("llm_cost_usd"),
-                createdAt == null ? null : createdAt.toInstant());
-    };
+    private static final RowMapper<Classification> CLASSIFICATION_MAPPER = (rs, rowNum) -> new Classification(
+            rs.getObject("id", UUID.class),
+            rs.getObject("email_id", UUID.class),
+            Decision.valueOf(rs.getString("decision")),
+            reasonCodes(rs.getArray("reason_codes")),
+            RouteUsed.valueOf(rs.getString("route_used")),
+            rs.getLong("latency_ms"),
+            modelScores(rs),
+            fusedScore(rs),
+            rs.getString("policy_version"),
+            rs.getBigDecimal("llm_cost_usd"),
+            JdbcTimestamps.instantOrNull(rs, "created_at"));
 
     /**
      * Reconstructs the model scores, or {@code null} for a hard-rule row. The
@@ -177,6 +176,6 @@ public class ClassificationRepository {
             return List.of();
         }
         String[] names = (String[]) array.getArray();
-        return List.of(names).stream().map(ReasonCode::valueOf).toList();
+        return Arrays.stream(names).map(ReasonCode::valueOf).toList();
     }
 }

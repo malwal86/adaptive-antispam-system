@@ -1,5 +1,6 @@
 package com.antispam.decision.calibration;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -62,7 +63,7 @@ public final class CalibrationEvaluator {
             }
         }
 
-        List<ReliabilityBin> bins = new java.util.ArrayList<>(binCount);
+        List<ReliabilityBin> bins = new ArrayList<>(binCount);
         double width = 1.0 / binCount;
         for (int b = 0; b < binCount; b++) {
             long n = counts[b];

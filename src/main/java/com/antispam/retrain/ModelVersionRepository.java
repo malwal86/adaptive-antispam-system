@@ -1,6 +1,7 @@
 package com.antispam.retrain;
 
-import java.time.OffsetDateTime;
+import com.antispam.common.JdbcTimestamps;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,13 +56,13 @@ public class ModelVersionRepository {
      * {@code promoted_at}.
      */
     public ModelVersionRecord register(ModelVersionRecord record) {
-        OffsetDateTime promotedAt = jdbc.queryForObject(UPSERT_SQL,
-                (rs, rowNum) -> rs.getObject("promoted_at", OffsetDateTime.class),
+        Instant promotedAt = jdbc.queryForObject(UPSERT_SQL,
+                (rs, rowNum) -> JdbcTimestamps.instantOrNull(rs, "promoted_at"),
                 record.version(), record.artifactUri(), record.gatePrecision(),
                 record.sourceRun(), record.promotedBy());
         return new ModelVersionRecord(record.version(), record.artifactUri(), record.gatePrecision(),
                 record.sourceRun(), record.promotedBy(),
-                promotedAt == null ? null : promotedAt.toInstant());
+                promotedAt);
     }
 
     public Optional<ModelVersionRecord> findByVersion(String version) {
@@ -78,7 +79,6 @@ public class ModelVersionRepository {
     }
 
     private static final RowMapper<ModelVersionRecord> MAPPER = (rs, rowNum) -> {
-        OffsetDateTime promotedAt = rs.getObject("promoted_at", OffsetDateTime.class);
         Double gatePrecision = (Double) rs.getObject("gate_precision");
         return new ModelVersionRecord(
                 rs.getString("version"),
@@ -86,6 +86,6 @@ public class ModelVersionRepository {
                 gatePrecision,
                 rs.getObject("source_run", UUID.class),
                 rs.getString("promoted_by"),
-                promotedAt == null ? null : promotedAt.toInstant());
+                JdbcTimestamps.instantOrNull(rs, "promoted_at"));
     };
 }

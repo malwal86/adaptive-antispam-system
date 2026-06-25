@@ -1,5 +1,6 @@
 package com.antispam.feedback;
 
+import com.antispam.common.JsonCodec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -82,13 +83,7 @@ public class PersonaRepository {
     }
 
     private String toJson(PersonaConfig config) {
-        try {
-            return objectMapper.writeValueAsString(config);
-        } catch (JsonProcessingException e) {
-            // PersonaConfig is a closed record of primitives; a failure here is a programming
-            // error (a non-serializable field crept in), not a runtime condition to recover from.
-            throw new IllegalStateException("failed to serialize persona config", e);
-        }
+        return JsonCodec.serialize(objectMapper, config, "persona config");
     }
 
     private PersonaConfig fromJson(String json) {

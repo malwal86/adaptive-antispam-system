@@ -1,6 +1,7 @@
 package com.antispam.analyze.web;
 
 import com.antispam.analyze.EmailNotFoundException;
+import com.antispam.common.ApiErrors;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,11 +18,11 @@ public class AnalyzeExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleBadInput(IllegalArgumentException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.BAD_REQUEST, e);
     }
 
     @ExceptionHandler(EmailNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(EmailNotFoundException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.NOT_FOUND, e);
     }
 }

@@ -2,6 +2,7 @@ package com.antispam.arena.web;
 
 import com.antispam.arena.AttackerUnavailableException;
 import com.antispam.arena.MutationException;
+import com.antispam.common.ApiErrors;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,11 +21,11 @@ public class ArenaExceptionHandler {
 
     @ExceptionHandler(MutationException.class)
     public ResponseEntity<Map<String, String>> handleBadSeed(MutationException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.BAD_REQUEST, e);
     }
 
     @ExceptionHandler(AttackerUnavailableException.class)
     public ResponseEntity<Map<String, String>> handleAttackerDown(AttackerUnavailableException e) {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.SERVICE_UNAVAILABLE, e);
     }
 }

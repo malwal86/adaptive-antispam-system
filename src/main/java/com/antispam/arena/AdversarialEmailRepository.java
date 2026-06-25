@@ -1,7 +1,7 @@
 package com.antispam.arena;
 
+import com.antispam.common.JdbcTimestamps;
 import com.antispam.seed.GroundTruthLabel;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -155,19 +155,16 @@ public class AdversarialEmailRepository {
         }
     }
 
-    private static final RowMapper<AdversarialEmail> ADVERSARIAL_EMAIL_MAPPER = (rs, rowNum) -> {
-        OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
-        return new AdversarialEmail(
-                rs.getObject("id", UUID.class),
-                rs.getObject("variant_email_id", UUID.class),
-                rs.getObject("seed_email_id", UUID.class),
-                rs.getObject("parent_variant_id", UUID.class),
-                MutationStrategy.fromDbValue(rs.getString("mutation_strategy")),
-                GroundTruthLabel.fromDbValue(rs.getString("ground_truth_label")),
-                rs.getString("attacker_model"),
-                rs.getObject("run_id", UUID.class),
-                rs.getObject("generation", Integer.class),
-                rs.getObject("defender_delivered", Boolean.class),
-                createdAt == null ? null : createdAt.toInstant());
-    };
+    private static final RowMapper<AdversarialEmail> ADVERSARIAL_EMAIL_MAPPER = (rs, rowNum) -> new AdversarialEmail(
+            rs.getObject("id", UUID.class),
+            rs.getObject("variant_email_id", UUID.class),
+            rs.getObject("seed_email_id", UUID.class),
+            rs.getObject("parent_variant_id", UUID.class),
+            MutationStrategy.fromDbValue(rs.getString("mutation_strategy")),
+            GroundTruthLabel.fromDbValue(rs.getString("ground_truth_label")),
+            rs.getString("attacker_model"),
+            rs.getObject("run_id", UUID.class),
+            rs.getObject("generation", Integer.class),
+            rs.getObject("defender_delivered", Boolean.class),
+            JdbcTimestamps.instantOrNull(rs, "created_at"));
 }

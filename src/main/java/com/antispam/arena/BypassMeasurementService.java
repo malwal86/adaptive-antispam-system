@@ -1,5 +1,6 @@
 package com.antispam.arena;
 
+import com.antispam.common.JsonCodec;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.decision.policy.PolicyScorer;
@@ -7,7 +8,6 @@ import com.antispam.experiment.ExperimentContext;
 import com.antispam.ingest.EmailRepository;
 import com.antispam.retrain.RetrainLabel;
 import com.antispam.retrain.RetrainLabelRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -186,11 +186,7 @@ public class BypassMeasurementService {
         provenance.put("outcome", outcome.token);
         provenance.put("targetBypassRate", run.targetBypassRate());
         provenance.put("actualBypassRate", run.actualBypassRate());
-        try {
-            return objectMapper.writeValueAsString(provenance);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("failed to serialize arena label provenance", e);
-        }
+        return JsonCodec.serialize(objectMapper, provenance, "arena label provenance");
     }
 
     private static Double firstRate(List<BypassTrendPoint> points) {

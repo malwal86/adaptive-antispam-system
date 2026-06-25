@@ -1,5 +1,6 @@
 package com.antispam.feedback.gate;
 
+import com.antispam.common.JsonCodec;
 import com.antispam.event.SenderKey;
 import com.antispam.feedback.FeedbackEvent;
 import com.antispam.feedback.FeedbackEventRepository;
@@ -15,7 +16,6 @@ import com.antispam.reputation.ReputationService;
 import com.antispam.reputation.ReputationSignal;
 import com.antispam.retrain.RetrainLabel;
 import com.antispam.retrain.RetrainLabelRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -231,11 +231,6 @@ public class FeedbackGateService {
         provenance.put("confidence", item.confidence());
         provenance.put("trust", item.trust());
         provenance.put("itemWeight", item.weight());
-        try {
-            return objectMapper.writeValueAsString(provenance);
-        } catch (JsonProcessingException e) {
-            // The map holds only strings and primitives; a failure here is a programming error.
-            throw new IllegalStateException("failed to serialize label provenance", e);
-        }
+        return JsonCodec.serialize(objectMapper, provenance, "label provenance");
     }
 }

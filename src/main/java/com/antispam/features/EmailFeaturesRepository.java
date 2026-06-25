@@ -1,8 +1,9 @@
 package com.antispam.features;
 
+import com.antispam.common.JdbcTimestamps;
+import com.antispam.common.JsonCodec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,24 +68,16 @@ public class EmailFeaturesRepository {
     }
 
     private String toJson(FeatureSet features) {
-        try {
-            return objectMapper.writeValueAsString(features);
-        } catch (JsonProcessingException e) {
-            // The feature set is a closed set of records and primitives; a failure
-            // here is a programming error (a non-serializable field crept in), not a
-            // runtime condition to recover from.
-            throw new IllegalStateException("failed to serialize feature set", e);
-        }
+        return JsonCodec.serialize(objectMapper, features, "feature set");
     }
 
     private final RowMapper<EmailFeatures> mapper = (rs, rowNum) -> {
         FeatureSet features = fromJson(rs.getString("features"));
-        OffsetDateTime extractedAt = rs.getObject("extracted_at", OffsetDateTime.class);
         return new EmailFeatures(
                 rs.getObject("email_id", UUID.class),
                 rs.getInt("feature_version"),
                 features,
-                extractedAt == null ? null : extractedAt.toInstant());
+                JdbcTimestamps.instantOrNull(rs, "extracted_at"));
     };
 
     private FeatureSet fromJson(String json) {
