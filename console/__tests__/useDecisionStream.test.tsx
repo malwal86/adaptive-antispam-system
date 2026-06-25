@@ -78,6 +78,32 @@ describe("useDecisionStream", () => {
     expect(result.current.items[0].resolved).toBe(true);
   });
 
+  it("accumulates monotonic story-panel stats, deduping a replayed decision", async () => {
+    let source!: FakeEventSource;
+    const factory = (url: string) => (source = new FakeEventSource(url)) as unknown as EventSource;
+
+    const { result } = renderHook(() =>
+      useDecisionStream({ url: "http://api.test/decisions/stream", eventSourceFactory: factory }),
+    );
+
+    act(() => {
+      source.emit(decision("a", { routeUsed: "llm", llmCostUsd: 0.02, posterior: 0.8 }));
+      source.emit(decision("b", { routeUsed: "model", posterior: 0.1 }));
+    });
+    await waitFor(() => expect(result.current.stats.total).toBe(2));
+    expect(result.current.stats.routeCounts).toEqual({ rules: 0, reputation: 1, llm: 1 });
+    expect(result.current.stats.costUsd).toBeCloseTo(0.02, 10);
+    expect(result.current.stats.trustSeries).toHaveLength(2);
+
+    // A reconnect replays id "a"; the stats must not double-count it.
+    act(() => {
+      source.emit(decision("a", { routeUsed: "llm", llmCostUsd: 0.02, posterior: 0.8 }));
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    expect(result.current.stats.total).toBe(2);
+    expect(result.current.stats.costUsd).toBeCloseTo(0.02, 10);
+  });
+
   it("closes the stream on unmount", () => {
     let source!: FakeEventSource;
     const factory = (url: string) => (source = new FakeEventSource(url)) as unknown as EventSource;

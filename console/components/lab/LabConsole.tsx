@@ -4,20 +4,20 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { ControlsRail } from "@/components/lab/controls/ControlsRail";
 import { LiveStream } from "@/components/lab/LiveStream";
-import { RailPanel } from "@/components/lab/RailPanel";
+import { StoryPanel } from "@/components/lab/story/StoryPanel";
 import { useDecisionStream } from "@/lib/useDecisionStream";
 
 /**
  * The Abuse Lab Console shell (story 12.01): a three-pane layout — controls,
  * the live decision stream, the story panel — over the Java API's SSE feed.
  *
- * <p>This story delivers the shell + transport: the centre pane renders decisions
- * live as the pipeline makes them, and the rails are present and responsive,
- * ready for the controls (12.02) and story panel (12.04). The console is a thin
- * client — it subscribes and renders; it never decides.
+ * <p>The shell + transport landed in 12.01; the left rail's live controls in 12.02; the centre's
+ * animated decision cards in 12.03; and the right {@link StoryPanel}'s reputation curve, route mix,
+ * cost meter, and baseline-miss table in 12.04. The console is a thin client — it subscribes to the
+ * feed and renders the system's signals; it never decides.
  */
 export function LabConsole() {
-  const { items, status } = useDecisionStream();
+  const { items, status, stats } = useDecisionStream();
 
   return (
     <div className="flex h-screen flex-col">
@@ -49,12 +49,7 @@ export function LabConsole() {
           <LiveStream items={items} status={status} />
         </div>
 
-        <RailPanel
-          data-testid="right-rail"
-          title="Story"
-          icon="insights"
-          upcoming="Reputation curve, route mix, cost meter, and the baseline-miss table arrive in story 12.04."
-        />
+        <StoryPanel stats={stats} />
       </main>
     </div>
   );

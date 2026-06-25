@@ -19,6 +19,18 @@ export interface AnalyzeResponse {
   explanation: string;
   decidedAt: string;
   duplicate: boolean;
+  /**
+   * Reputation-fused P(abuse) in [0,1], present only on a fused model/LLM verdict (omitted on a
+   * hard-rule short-circuit or a pre-calibration model row). The story panel's reputation curve
+   * (story 12.04) reads this: trust is its complement, so the curve rises as good mail lands and
+   * collapses as an attack drives the posterior up.
+   */
+  posterior?: number;
+  /**
+   * USD cost of the LLM call on an `llm`-route verdict (omitted when no LLM ran). The story panel's
+   * cost meter (story 12.04) sums it across the live feed to tick up real spend.
+   */
+  llmCostUsd?: number;
 }
 
 /** Item of GET /seed/samples (see SeedSampleResponse.java). */
