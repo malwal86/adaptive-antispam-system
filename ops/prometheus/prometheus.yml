@@ -1,0 +1,30 @@
+# Prometheus scrape config (story 13.02). Scrapes the Spring app's Micrometer endpoint (story
+# 13.01) so Grafana has data to draw.
+#
+# CRITICAL: the actuator endpoints are root-remapped (application.yml), so the scrape path is
+# /prometheus, NOT Prometheus's default /metrics. Omitting metrics_path here is the single most
+# likely "the dashboards are empty" mistake.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: antispam-api
+    metrics_path: /prometheus
+    static_configs:
+      # Local: the Spring app running on the host (docker compose reaches it via the
+      # host gateway). Bring the app up on :8080 (PORT=8080), then `docker compose -f
+      # ops/docker-compose.observability.yml up`.
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          env: local
+
+  # Hosted demo (story 13.03): point at the Render API over TLS. Uncomment and set the host, then
+  # restart Prometheus. The remapped path and per-process cost counters work identically there.
+  # - job_name: antispam-api-hosted
+  #   scheme: https
+  #   metrics_path: /prometheus
+  #   static_configs:
+  #     - targets: ["living-antispam.onrender.com"]
+  #       labels:
+  #         env: hosted

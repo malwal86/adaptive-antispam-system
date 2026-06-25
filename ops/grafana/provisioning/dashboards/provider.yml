@@ -1,0 +1,16 @@
+# Grafana dashboard provider as code (story 13.02). Grafana loads every dashboard JSON under the
+# mounted path on startup, so the ops dashboard is reproduced from version control in a clean
+# environment with no hand-building. updateIntervalSeconds re-reads the files, so editing the
+# checked-in JSON and re-provisioning updates the live dashboard.
+apiVersion: 1
+
+providers:
+  - name: antispam
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      # Mount target in docker-compose.observability.yml for ops/grafana/dashboards.
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
