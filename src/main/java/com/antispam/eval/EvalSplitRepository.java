@@ -1,6 +1,7 @@
 package com.antispam.eval;
 
 import com.antispam.seed.GroundTruthLabel;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,46 @@ public class EvalSplitRepository {
             from eval_split_assignments a
             join ground_truth_labels g on g.email_id = a.email_id
             group by a.split_side, g.label
+            """;
+
+    // Re-derives the leakage-free evidence from the MATERIALIZED split (story 11.03), so the
+    // time-forward metric can be cited without recomputing the split. It re-checks the durable table
+    // rather than trusting the splitter that wrote it: a family whose group_key appears on both sides
+    // is a grouping bug (cross_boundary, must be 0), and an eval email older than the newest train
+    // email is honest time-forward overlap (temporal_inversions). The timeline is received_at falling
+    // back to ingested_at, exactly as the splitter saw it.
+    private static final String STORED_AUDIT_SQL = """
+            with rows as (
+                select a.split_side                          as side,
+                       a.group_key                           as gk,
+                       coalesce(e.received_at, e.ingested_at) as et
+                from eval_split_assignments a
+                join emails e on e.id = a.email_id
+            ),
+            agg as (
+                select count(*)                                  as total,
+                       count(*) filter (where side = 'train')    as train_count,
+                       count(*) filter (where side = 'eval')     as eval_count,
+                       count(distinct gk)                        as group_count,
+                       max(et) filter (where side = 'train')     as latest_train_time,
+                       min(et) filter (where side = 'eval')      as earliest_eval_time
+                from rows
+            ),
+            cross_boundary as (
+                select count(*) as n
+                from (select gk from rows group by gk having count(distinct side) > 1) spanning
+            ),
+            inversions as (
+                select count(*) as n
+                from rows, agg
+                where rows.side = 'eval'
+                  and agg.latest_train_time is not null
+                  and rows.et < agg.latest_train_time
+            )
+            select agg.total, agg.train_count, agg.eval_count, agg.group_count,
+                   cross_boundary.n as cross_boundary, inversions.n as temporal_inversions,
+                   agg.latest_train_time, agg.earliest_eval_time
+            from agg, cross_boundary, inversions
             """;
 
     private final JdbcTemplate jdbc;
@@ -67,6 +109,32 @@ public class EvalSplitRepository {
             }
         });
     }
+
+    /**
+     * Re-derives the leakage-free {@link SplitAudit} from the materialized split (story 11.03), so the
+     * time-forward metric is a read, not a recompute. Returns a zeroed audit (null times) when no split
+     * has been materialized yet.
+     */
+    public SplitAudit storedAudit() {
+        return jdbc.query(STORED_AUDIT_SQL, AUDIT_EXTRACTOR);
+    }
+
+    private static final ResultSetExtractor<SplitAudit> AUDIT_EXTRACTOR = rs -> {
+        if (!rs.next()) {
+            return new SplitAudit(0, 0, 0, 0, 0, 0, null, null);
+        }
+        OffsetDateTime latestTrain = rs.getObject("latest_train_time", OffsetDateTime.class);
+        OffsetDateTime earliestEval = rs.getObject("earliest_eval_time", OffsetDateTime.class);
+        return new SplitAudit(
+                rs.getInt("total"),
+                rs.getInt("train_count"),
+                rs.getInt("eval_count"),
+                rs.getInt("group_count"),
+                rs.getInt("cross_boundary"),
+                rs.getInt("temporal_inversions"),
+                latestTrain == null ? null : latestTrain.toInstant(),
+                earliestEval == null ? null : earliestEval.toInstant());
+    };
 
     /** Per-(side, class) counts of the stored split, for surfacing class balance. */
     public Map<SplitSide, Map<GroundTruthLabel, Long>> countsBySideAndLabel() {
