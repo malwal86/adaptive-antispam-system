@@ -2,12 +2,11 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Icon } from "@/components/ui/icon";
+import { EMPHASIZED_EASE } from "@/lib/animation";
 import { isPending, type StreamItem } from "@/lib/decisionStream";
+import { formatClockTime, shortId } from "@/lib/format";
 import { TIERS, reasonLabel } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
-
-// M3 emphasized-decelerate — settle at rest. Both short (≤300ms) per the guidelines.
-const EMPHASIZED = [0.05, 0.7, 0.1, 1] as const;
 
 /**
  * One decision in the live stream, as a card that flips to its tier (story 12.03).
@@ -29,7 +28,7 @@ export function LiveDecisionCard({ item }: { item: StreamItem }) {
     <motion.article
       initial={{ opacity: 0, y: reduceMotion ? 0 : 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduceMotion ? 0 : 0.24, ease: EMPHASIZED }}
+      transition={{ duration: reduceMotion ? 0 : 0.24, ease: EMPHASIZED_EASE }}
       data-testid="live-decision-card"
       data-tier={decision.tier}
       data-pending={pending ? "true" : undefined}
@@ -107,11 +106,11 @@ export function LiveDecisionCard({ item }: { item: StreamItem }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label-md text-on-surface-variant">
           <span className="inline-flex items-center gap-1">
             <Icon name="fingerprint" className="text-[16px] leading-none" />
-            {decision.emailId.slice(0, 8)}
+            {shortId(decision.emailId)}
           </span>
           <span className="inline-flex items-center gap-1">
             <Icon name="schedule" className="text-[16px] leading-none" />
-            {formatTime(decision.decidedAt)}
+            {formatClockTime(decision.decidedAt)}
           </span>
         </div>
       </div>
@@ -145,9 +144,4 @@ function routeIcon(route: string): string {
   if (route === "hard_rule") return "gavel";
   if (route === "llm") return "smart_toy";
   return "memory";
-}
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString();
 }

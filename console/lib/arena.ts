@@ -4,7 +4,7 @@
 // model, that gap is exactly "danger the baseline missed that the current model caught". The console
 // only reads and renders these real measurements — it never re-scores anything itself.
 
-import { API_BASE_URL, errorMessage } from "./api";
+import { API_BASE_URL, readJson } from "./api";
 
 /** One run on the cross-run bypass trend (mirrors BypassTrendPoint.java). */
 export interface BypassTrendPoint {
@@ -37,11 +37,7 @@ export interface BaselineMiss {
 }
 
 export async function fetchBypassTrend(limit = 20): Promise<BypassTrend> {
-  const res = await fetch(`${API_BASE_URL}/arena/trend?limit=${limit}`);
-  if (!res.ok) {
-    throw new Error(await errorMessage(res));
-  }
-  return (await res.json()) as BypassTrend;
+  return readJson(await fetch(`${API_BASE_URL}/arena/trend?limit=${limit}`));
 }
 
 /**

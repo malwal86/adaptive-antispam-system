@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/ui/icon";
 import type { SeedSample } from "@/lib/api";
+import { shortId } from "@/lib/format";
 import { LABEL_ACCENT } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +55,7 @@ export function SamplePicker({
               {sample.label}
             </span>
             <span className="truncate text-on-surface-variant">
-              {sample.subject?.trim() || sample.senderDomain || sample.emailId.slice(0, 8)}
+              {sample.subject?.trim() || sample.senderDomain || shortId(sample.emailId)}
             </span>
           </button>
         ))}

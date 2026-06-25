@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/ui/icon";
 import type { BaselineMiss } from "@/lib/arena";
+import { shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 interface BaselineMissTableProps {
@@ -46,7 +47,7 @@ export function BaselineMissTable({ misses, loading, error }: BaselineMissTableP
               >
                 <span className="inline-flex items-center gap-1.5 text-label-md text-on-surface-variant">
                   <Icon name="science" className="text-[16px] leading-none" />
-                  <span className="tabular-nums">{miss.runId.slice(0, 8)}</span>
+                  <span className="tabular-nums">{shortId(miss.runId)}</span>
                 </span>
                 <span className="flex items-center gap-2 tabular-nums text-label-md">
                   <span className="text-on-surface-variant">

@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { ReasonChip } from "@/components/ReasonChip";
 import type { AnalyzeResponse } from "@/lib/api";
+import { EMPHASIZED_EASE } from "@/lib/animation";
+import { formatClockTime, shortId } from "@/lib/format";
 import { TIERS } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +29,7 @@ export function ResultCard({ result }: { result: AnalyzeResponse }) {
       scale: 1,
       transition: reduceMotion
         ? { duration: 0 }
-        : { duration: 0.28, ease: [0.05, 0.7, 0.1, 1], when: "beforeChildren", staggerChildren: 0.05 },
+        : { duration: 0.28, ease: EMPHASIZED_EASE, when: "beforeChildren", staggerChildren: 0.05 },
     },
   };
   const item: Variants = {
@@ -102,11 +104,11 @@ export function ResultCard({ result }: { result: AnalyzeResponse }) {
           >
             <span className="inline-flex items-center gap-1.5">
               <Icon name="fingerprint" className="text-[16px] leading-none" />
-              {result.emailId.slice(0, 8)}
+              {shortId(result.emailId)}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Icon name="schedule" className="text-[16px] leading-none" />
-              {formatTime(result.decidedAt)}
+              {formatClockTime(result.decidedAt)}
             </span>
             {result.duplicate && (
               <span className="inline-flex items-center gap-1.5">
@@ -125,9 +127,4 @@ function routeLabel(route: string): string {
   if (route === "hard_rule") return "Hard rule";
   if (route === "model") return "Model";
   return route;
-}
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString();
 }

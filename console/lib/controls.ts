@@ -3,7 +3,7 @@
 // policy, thresholds, LLM budget caps), and the effect shows up in the live
 // decision stream — the console never decides anything itself.
 
-import { API_BASE_URL, errorMessage } from "./api";
+import { API_BASE_URL, readJson } from "./api";
 
 export interface PolicySummary {
   version: string;
@@ -40,13 +40,6 @@ export interface ScenarioRun {
   seed: number;
   /** The shadow policy designated for the run, omitted when none was derivable. */
   shadowPolicyVersion?: string;
-}
-
-async function readJson<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    throw new Error(await errorMessage(res));
-  }
-  return (await res.json()) as T;
 }
 
 export async function fetchPolicies(): Promise<PolicySummary[]> {
