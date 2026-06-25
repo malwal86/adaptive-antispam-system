@@ -128,13 +128,20 @@ server:
 
 # Actuator is remapped to the application root so the public probes are /health
 # and /info (not /actuator/*). /health is the liveness probe; /info reports the
-# build version + git commit so any deployed build is identifiable.
+# build version + git commit so any deployed build is identifiable. /prometheus
+# (story 13.01) is the Micrometer → Prometheus scrape endpoint — same root remap,
+# so the scrape target is /prometheus (Prometheus's scrape config points there).
 management:
   endpoints:
     web:
       base-path: /
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  # Tag every exported metric with the application name so a single Prometheus/Grafana
+  # stack scraping more than one service keeps this app's series attributable.
+  metrics:
+    tags:
+      application: ${spring.application.name}
   # The reputation cache degrades to Postgres when Redis is down (story 03.04), so a
   # Redis outage must NOT mark the app unhealthy and pull it from the load balancer.
   # Exclude Redis from the health aggregate to keep liveness independent of the cache.

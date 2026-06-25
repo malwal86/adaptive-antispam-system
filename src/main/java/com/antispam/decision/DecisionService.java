@@ -76,6 +76,7 @@ public class DecisionService {
     private final LlmProperties llmProperties;
     private final QuarantinePendingService quarantinePendingService;
     private final ShadowScoringService shadowScoringService;
+    private final DecisionMetrics decisionMetrics;
     private final ApplicationEventPublisher events;
 
     @Autowired
@@ -90,6 +91,7 @@ public class DecisionService {
             LlmProperties llmProperties,
             QuarantinePendingService quarantinePendingService,
             ShadowScoringService shadowScoringService,
+            DecisionMetrics decisionMetrics,
             ApplicationEventPublisher events) {
         this.hardRuleEngine = hardRuleEngine;
         this.circuitBreaker = circuitBreaker;
@@ -101,6 +103,7 @@ public class DecisionService {
         this.llmProperties = llmProperties;
         this.quarantinePendingService = quarantinePendingService;
         this.shadowScoringService = shadowScoringService;
+        this.decisionMetrics = decisionMetrics;
         this.events = events;
     }
 
@@ -158,6 +161,7 @@ public class DecisionService {
             log.info("quarantine-pending email={} route={} provisional={} routingReasons={} policy={}",
                     email.id(), RouteUsed.LLM, pending.decision(), tiered.routingReasons(),
                     tiered.policyVersion());
+            decisionMetrics.record(pending);
             publish(pending);
             return pending;
         }
@@ -189,6 +193,13 @@ public class DecisionService {
                 fused == null ? null : fused.posterior(), tiered.policyVersion(),
                 llm == null || llm.degraded() ? null : llm.verdict().verdict(),
                 llm == null ? null : llm.degraded(), llmCostUsd);
+        decisionMetrics.record(classification);
+        // A routed decision that fell back to the fast-path posterior (provider disabled or the call
+        // failed) is the synchronous degraded-mode signal; the async quarantine-pending degrade is
+        // counted by LlmMeter (story 05.06). A non-routed decision never degrades here.
+        if (llm != null && llm.degraded()) {
+            decisionMetrics.recordDegraded();
+        }
         publish(classification);
         return classification;
     }
