@@ -29,10 +29,38 @@ const ALLOW = {
   explanation: "No hard-rule or model signal fired; allowed.",
 };
 
+// A single uncertain email decided twice (story 05.06): first provisionally withheld as
+// quarantine-pending on the LLM route, then resolved to allow by the async LLM. Same emailId,
+// different classificationId — the console must show one card flipping, never two.
+const PENDING = {
+  ...BLOCK,
+  emailId: "9f1c0e7a-5b2d-4a6f-9c3e-1d8b7a4f2c10",
+  classificationId: "p1",
+  tier: "quarantine",
+  reasonCodes: [],
+  routeUsed: "llm",
+  explanation: "Uncertain — provisionally withheld pending LLM resolution.",
+};
+
+const RESOLVED = {
+  ...PENDING,
+  classificationId: "p2",
+  tier: "allow",
+  routeUsed: "llm",
+  explanation: "LLM judged the message legitimate; promoted to the inbox.",
+};
+
 function streamBody(): string {
   return (
     `id: 1\nevent: decision\ndata: ${JSON.stringify(BLOCK)}\n\n` +
     `id: 2\nevent: decision\ndata: ${JSON.stringify(ALLOW)}\n\n`
+  );
+}
+
+function pendingThenResolvedBody(): string {
+  return (
+    `id: 1\nevent: decision\ndata: ${JSON.stringify(PENDING)}\n\n` +
+    `id: 2\nevent: decision\ndata: ${JSON.stringify(RESOLVED)}\n\n`
   );
 }
 
@@ -49,13 +77,13 @@ const POLICY = {
   createdAt: "2026-06-01T00:00:00Z",
 };
 
-async function stubStream(page: Page, onRequest?: () => void) {
+async function stubStream(page: Page, onRequest?: () => void, body: string = streamBody()) {
   await page.route(`${API}/decisions/stream`, (route) => {
     onRequest?.();
     return route.fulfill({
       contentType: "text/event-stream",
       headers: { "Cache-Control": "no-cache" },
-      body: streamBody(),
+      body,
     });
   });
 }
@@ -86,6 +114,44 @@ test("renders three panes and streams decisions in live, newest-first", async ({
   // The last event received leads the newest-first list.
   await expect(cards.first()).toHaveAttribute("data-tier", "allow");
   await expect(cards.nth(1)).toHaveAttribute("data-tier", "block");
+});
+
+test("each card's route indicator and reason chips reflect how it was decided", async ({ page }) => {
+  await stubStream(page);
+  await stubControls(page);
+  await page.goto("/");
+
+  const cards = page.getByTestId("live-decision-card");
+  await expect(cards).toHaveCount(2);
+
+  // Newest-first: the model-routed allow leads, the hard-rule block follows.
+  // (route-used also carries its Material Symbol glyph, so match on contained text.)
+  await expect(cards.first().getByTestId("route-used")).toContainText("Model");
+  const blockCard = cards.nth(1);
+  await expect(blockCard.getByTestId("route-used")).toContainText("Hard rule");
+  await expect(blockCard.getByTestId("reason-chip")).toContainText("Known-bad URL");
+});
+
+test("a quarantine-pending email resolves in place — one card, flipped, never retracted", async ({
+  page,
+}) => {
+  await stubStream(page, undefined, pendingThenResolvedBody());
+  await stubControls(page);
+  await page.goto("/");
+
+  // The pending row and its resolution share an email, so there is exactly one card,
+  // and it ends on the resolved tier — the pending → final-tier flip (story 05.06).
+  const card = page.getByTestId("live-decision-card");
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveAttribute("data-tier", "allow");
+  await expect(card).toHaveAttribute("data-resolved", "true");
+  await expect(card.getByTestId("pending-indicator")).toHaveCount(0);
+
+  // The stub replays the full body on every EventSource reconnect; the fold is idempotent,
+  // so the card never flickers back to quarantine — no deliver-then-retract.
+  await page.waitForTimeout(1500);
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveAttribute("data-tier", "allow");
 });
 
 test("a threshold change posts new thresholds and is acknowledged", async ({ page }) => {
