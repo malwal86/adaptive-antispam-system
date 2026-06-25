@@ -1,8 +1,8 @@
 package com.antispam.ingest;
 
+import com.antispam.common.JdbcTimestamps;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.HexFormat;
 import java.util.List;
@@ -142,14 +142,12 @@ public class EmailRepository {
     }
 
     private static final RowMapper<Email> EMAIL_MAPPER = (rs, rowNum) -> {
-        OffsetDateTime receivedAt = rs.getObject("received_at", OffsetDateTime.class);
-        OffsetDateTime ingestedAt = rs.getObject("ingested_at", OffsetDateTime.class);
         ParsedEmail metadata = new ParsedEmail(
                 rs.getString("sender"),
                 rs.getString("sender_domain"),
                 rs.getString("recipients"),
                 rs.getString("subject"),
-                receivedAt == null ? null : receivedAt.toInstant(),
+                JdbcTimestamps.instantOrNull(rs, "received_at"),
                 rs.getString("auth_results"));
         return new Email(
                 rs.getObject("id", UUID.class),
@@ -157,6 +155,6 @@ public class EmailRepository {
                 rs.getBytes("raw_content"),
                 metadata,
                 rs.getString("ingest_source"),
-                ingestedAt == null ? null : ingestedAt.toInstant());
+                JdbcTimestamps.instantOrNull(rs, "ingested_at"));
     };
 }

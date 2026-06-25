@@ -1,5 +1,6 @@
 package com.antispam.decision.policy;
 
+import com.antispam.common.JdbcTimestamps;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -156,18 +157,15 @@ public class PolicyRepository {
         }
     }
 
-    private static final RowMapper<Policy> POLICY_MAPPER = (rs, rowNum) -> {
-        OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
-        return new Policy(
-                rs.getString("version"),
-                rs.getBoolean("active"),
-                rs.getDouble("warn_threshold"),
-                rs.getDouble("quarantine_threshold"),
-                rs.getDouble("block_threshold"),
-                rs.getDouble("llm_threshold"),
-                rs.getDouble("routing_band_width"),
-                rs.getInt("burst_threshold"),
-                rs.getString("model_version"),
-                createdAt == null ? null : createdAt.toInstant());
-    };
+    private static final RowMapper<Policy> POLICY_MAPPER = (rs, rowNum) -> new Policy(
+            rs.getString("version"),
+            rs.getBoolean("active"),
+            rs.getDouble("warn_threshold"),
+            rs.getDouble("quarantine_threshold"),
+            rs.getDouble("block_threshold"),
+            rs.getDouble("llm_threshold"),
+            rs.getDouble("routing_band_width"),
+            rs.getInt("burst_threshold"),
+            rs.getString("model_version"),
+            JdbcTimestamps.instantOrNull(rs, "created_at"));
 }

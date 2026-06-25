@@ -1,7 +1,7 @@
 package com.antispam.arena;
 
+import com.antispam.common.JdbcTimestamps;
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -140,8 +140,6 @@ public class AdversarialRunRepository {
     }
 
     private static final RowMapper<AdversarialRun> RUN_MAPPER = (rs, rowNum) -> {
-        OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
-        OffsetDateTime completedAt = rs.getObject("completed_at", OffsetDateTime.class);
         Double actual = rs.getObject("actual_bypass_rate", Double.class);
         Double precisionFp = rs.getObject("precision_fp_rate", Double.class);
         Double baselineBypass = rs.getObject("baseline_bypass_rate", Double.class);
@@ -160,7 +158,7 @@ public class AdversarialRunRepository {
                 rs.getBigDecimal("spent_usd"),
                 rs.getInt("generations_run"),
                 RunStatus.fromDbValue(rs.getString("status")),
-                createdAt == null ? null : createdAt.toInstant(),
-                completedAt == null ? null : completedAt.toInstant());
+                JdbcTimestamps.instantOrNull(rs, "created_at"),
+                JdbcTimestamps.instantOrNull(rs, "completed_at"));
     };
 }

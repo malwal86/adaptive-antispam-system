@@ -1,5 +1,6 @@
 package com.antispam.eval.web;
 
+import com.antispam.common.ApiErrors;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,6 @@ public class EvalSetExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleImmutable(IllegalArgumentException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.CONFLICT, e);
     }
 }

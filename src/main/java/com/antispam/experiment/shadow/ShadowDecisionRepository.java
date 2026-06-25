@@ -1,5 +1,6 @@
 package com.antispam.experiment.shadow;
 
+import com.antispam.common.JdbcTimestamps;
 import com.antispam.decision.Decision;
 import com.antispam.decision.RouteUsed;
 import com.antispam.decision.policy.ScoredDecision;
@@ -129,7 +130,6 @@ public class ShadowDecisionRepository {
     }
 
     private static final RowMapper<ShadowDecision> SHADOW_DECISION_MAPPER = (rs, rowNum) -> {
-        OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
         ScoredDecision active = side(rs, "active");
         ScoredDecision shadow = side(rs, "shadow");
         ShadowDiff diff = new ShadowDiff(
@@ -137,7 +137,7 @@ public class ShadowDecisionRepository {
                 Direction.valueOf(rs.getString("direction")));
         return new ShadowDecision(
                 rs.getObject("id", UUID.class), rs.getObject("email_id", UUID.class),
-                active, shadow, diff, createdAt == null ? null : createdAt.toInstant());
+                active, shadow, diff, JdbcTimestamps.instantOrNull(rs, "created_at"));
     };
 
     /**

@@ -1,5 +1,6 @@
 package com.antispam.decision.calibration.web;
 
+import com.antispam.common.ApiErrors;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,6 @@ public class CalibrationExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> handleNotReady(IllegalStateException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.CONFLICT, e);
     }
 }

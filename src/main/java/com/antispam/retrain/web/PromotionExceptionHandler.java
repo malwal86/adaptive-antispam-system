@@ -1,5 +1,6 @@
 package com.antispam.retrain.web;
 
+import com.antispam.common.ApiErrors;
 import com.antispam.decision.model.ModelArtifactNotFoundException;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -26,16 +27,16 @@ public class PromotionExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> handleNotPromotable(IllegalStateException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.CONFLICT, e);
     }
 
     @ExceptionHandler(ModelArtifactNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleArtifactMissing(ModelArtifactNotFoundException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.NOT_FOUND, e);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleUnknownTarget(IllegalArgumentException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.BAD_REQUEST, e);
     }
 }

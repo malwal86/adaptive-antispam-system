@@ -2,6 +2,7 @@ package com.antispam.eval;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,7 +56,7 @@ public class CorpusGroupResolver {
      */
     public Map<UUID, String> resolve(Set<UUID> universe, List<List<UUID>> relations) {
         UnionFind families = new UnionFind();
-        Set<UUID> grouped = new java.util.HashSet<>();
+        Set<UUID> grouped = new HashSet<>();
         for (List<UUID> relation : relations) {
             UUID anchor = null;
             for (UUID member : relation) {

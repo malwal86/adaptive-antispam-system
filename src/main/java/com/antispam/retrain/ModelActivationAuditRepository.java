@@ -1,6 +1,7 @@
 package com.antispam.retrain;
 
-import java.time.OffsetDateTime;
+import com.antispam.common.JdbcTimestamps;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,11 +44,10 @@ public class ModelActivationAuditRepository {
     public ModelActivationAudit record(ModelActivationAction action, String policyVersion,
             String modelVersion, String actor) {
         UUID id = UUID.randomUUID();
-        OffsetDateTime at = jdbc.queryForObject(INSERT_SQL,
-                (rs, rowNum) -> rs.getObject("at", OffsetDateTime.class),
+        Instant at = jdbc.queryForObject(INSERT_SQL,
+                (rs, rowNum) -> JdbcTimestamps.instantOrNull(rs, "at"),
                 id, action.dbValue(), policyVersion, modelVersion, actor);
-        return new ModelActivationAudit(id, action, policyVersion, modelVersion, actor,
-                at == null ? null : at.toInstant());
+        return new ModelActivationAudit(id, action, policyVersion, modelVersion, actor, at);
     }
 
     /** The most recent activation changes, newest first. */
@@ -55,14 +55,11 @@ public class ModelActivationAuditRepository {
         return jdbc.query(SELECT_RECENT_SQL, MAPPER, limit);
     }
 
-    private static final RowMapper<ModelActivationAudit> MAPPER = (rs, rowNum) -> {
-        OffsetDateTime at = rs.getObject("at", OffsetDateTime.class);
-        return new ModelActivationAudit(
-                rs.getObject("id", UUID.class),
-                ModelActivationAction.fromDbValue(rs.getString("action")),
-                rs.getString("policy_version"),
-                rs.getString("model_version"),
-                rs.getString("actor"),
-                at == null ? null : at.toInstant());
-    };
+    private static final RowMapper<ModelActivationAudit> MAPPER = (rs, rowNum) -> new ModelActivationAudit(
+            rs.getObject("id", UUID.class),
+            ModelActivationAction.fromDbValue(rs.getString("action")),
+            rs.getString("policy_version"),
+            rs.getString("model_version"),
+            rs.getString("actor"),
+            JdbcTimestamps.instantOrNull(rs, "at"));
 }

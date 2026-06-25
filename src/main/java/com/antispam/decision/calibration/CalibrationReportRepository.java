@@ -1,5 +1,6 @@
 package com.antispam.decision.calibration;
 
+import com.antispam.common.JsonCodec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -83,13 +84,7 @@ public class CalibrationReportRepository {
     }
 
     private String writeBins(List<ReliabilityBin> bins) {
-        try {
-            return json.writeValueAsString(bins);
-        } catch (JsonProcessingException e) {
-            // The bins are plain records of primitives; a failure here is a programming
-            // error, not a runtime condition to recover from.
-            throw new IllegalStateException("failed to serialize reliability bins", e);
-        }
+        return JsonCodec.serialize(json, bins, "reliability bins");
     }
 
     private List<ReliabilityBin> readBins(String binsJson) {

@@ -1,5 +1,6 @@
 package com.antispam.retrain.web;
 
+import com.antispam.common.ApiErrors;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,6 @@ public class PrecisionGateExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> handleNotYetGradeable(IllegalStateException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        return ApiErrors.body(HttpStatus.CONFLICT, e);
     }
 }

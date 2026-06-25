@@ -1,12 +1,13 @@
 package com.antispam.experiment.replay;
 
+import com.antispam.common.JdbcTimestamps;
 import com.antispam.decision.Decision;
 import com.antispam.decision.ReasonCode;
 import com.antispam.decision.RouteUsed;
 import com.antispam.decision.policy.ScoredDecision;
 import com.antispam.decision.routing.RoutingReason;
 import java.sql.Array;
-import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -171,7 +172,6 @@ public class ReplayDecisionRepository {
     }
 
     private static final RowMapper<ReplayDecision> REPLAY_DECISION_MAPPER = (rs, rowNum) -> {
-        OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
         double posterior = rs.getDouble("posterior");
         Double boxedPosterior = rs.wasNull() ? null : posterior;
         ScoredDecision scored = new ScoredDecision(
@@ -186,7 +186,7 @@ public class ReplayDecisionRepository {
                 rs.getObject("run_id", UUID.class),
                 rs.getObject("email_id", UUID.class),
                 scored,
-                createdAt == null ? null : createdAt.toInstant());
+                JdbcTimestamps.instantOrNull(rs, "created_at"));
     };
 
     private static final RowMapper<LabeledReplayDecision> LABELED_DECISION_MAPPER = (rs, rowNum) ->
@@ -203,6 +203,6 @@ public class ReplayDecisionRepository {
             return List.of();
         }
         String[] names = (String[]) array.getArray();
-        return List.of(names).stream().map(parse).toList();
+        return Arrays.stream(names).map(parse).toList();
     }
 }

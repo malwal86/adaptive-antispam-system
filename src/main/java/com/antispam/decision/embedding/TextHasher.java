@@ -1,5 +1,8 @@
 package com.antispam.decision.embedding;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Turns email text into the fixed-width vector of signed n-gram counts that the
  * local embedding model consumes (story 04.03). This is the Java half of a
@@ -84,7 +87,7 @@ final class TextHasher {
         if (text == null || text.isEmpty()) {
             return new String[0];
         }
-        java.util.List<String> tokens = new java.util.ArrayList<>();
+        List<String> tokens = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);

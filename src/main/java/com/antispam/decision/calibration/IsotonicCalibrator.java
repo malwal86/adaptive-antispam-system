@@ -3,6 +3,7 @@ package com.antispam.decision.calibration;
 import com.antispam.decision.Probabilities;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -101,7 +102,7 @@ public final class IsotonicCalibrator implements ProbabilityCalibrator {
 
     private static List<Block> collapseTies(Collection<LabeledScore> points) {
         List<LabeledScore> sorted = new ArrayList<>(points);
-        sorted.sort((a, b) -> Double.compare(a.score(), b.score()));
+        sorted.sort(Comparator.comparingDouble(LabeledScore::score));
         List<Block> blocks = new ArrayList<>();
         int i = 0;
         while (i < sorted.size()) {
