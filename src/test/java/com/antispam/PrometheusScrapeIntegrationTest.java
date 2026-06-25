@@ -8,6 +8,7 @@ import com.antispam.ingest.IngestService;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -25,8 +26,14 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  * <p>A hard-rule BLOCK is driven deterministically (a known-bad URL short-circuits the model and the
  * LLM), so {@code route="HARD_RULE"} and {@code tier="BLOCK"} are guaranteed present without standing
  * up the model or a provider.
+ *
+ * <p>{@code @AutoConfigureObservability} is required: Spring Boot Test disables metrics export in a
+ * plain {@code @SpringBootTest}, so without it no {@link io.micrometer.core.instrument.MeterRegistry}
+ * is rendered to Prometheus and the {@code /prometheus} endpoint would 404. Tracing stays off — the
+ * project deliberately skips distributed tracing (PRD §Architecture).
  */
 @AutoConfigureMockMvc
+@AutoConfigureObservability(tracing = false)
 class PrometheusScrapeIntegrationTest extends AbstractPostgresIntegrationTest {
 
     @Autowired
@@ -45,11 +52,15 @@ class PrometheusScrapeIntegrationTest extends AbstractPostgresIntegrationTest {
 
     @Test
     void scrape_exposes_the_decision_pipeline_meters_after_a_decision_is_made() throws Exception {
+        // Content is unique to this test: ingest is idempotent by content, so reusing another
+        // test's email would attach a second classification to a shared email row and break that
+        // test's single-row assertion (the shared-DB-state gotcha). The known-bad URL still trips
+        // the hard rule, so route=HARD_RULE and tier=BLOCK are deterministic.
         Email email = ingest("""
-                From: deals@promo.example
-                Subject: Act now
+                From: probe@metrics.example
+                Subject: Prometheus scrape probe 13.01
 
-                Verify your prize at http://malware.example/login today.
+                Unique metrics-test body; follow http://malware.example/login to trip the rule.
                 """);
         decisionService.decide(email);
 
