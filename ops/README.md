@@ -64,3 +64,8 @@ scrape path) so the dashboard can't silently drift from the metrics.
 To watch the live Render deployment, uncomment the `antispam-api-hosted` job in
 `prometheus/prometheus.yml` and set the host (story 13.03 wires the always-on deploy). The remapped
 path and per-process counters behave identically there.
+
+The deploy stays **always-on within the PRD cost envelope**; between demos, the metered managed deps
+(Aiven + Supabase) can be paused toward the ~$35/mo idle floor with the reproducible IaC lever
+[`cost-lever.sh`](./cost-lever.sh) (`pause` / `resume` / `status`). See
+[`DEPLOYMENT.md`](../DEPLOYMENT.md) › "Cost envelope & the pause lever".
