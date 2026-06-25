@@ -31,6 +31,12 @@ dependencyManagement {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // Observability (story 13.01): Micrometer is already on the classpath (actuator), and the
+    // decision pipeline records meters through it (latency histogram, route mix, decision tiers,
+    // LLM cost/caps). This registry renders those meters in Prometheus text format at the actuator
+    // `prometheus` endpoint so Prometheus can scrape them (Grafana over them is story 13.02). PRD
+    // §Architecture: Micrometer → Prometheus → Grafana; distributed tracing intentionally skipped.
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     // Drives fail-fast validation of required service config (@Validated @NotBlank).
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
