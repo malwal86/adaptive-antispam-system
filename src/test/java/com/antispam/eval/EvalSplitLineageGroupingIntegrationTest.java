@@ -85,12 +85,13 @@ class EvalSplitLineageGroupingIntegrationTest extends AbstractPostgresIntegratio
         UUID seed = ingestLabeled("seed-domain.invalid", 2001, GroundTruthLabel.SPAM);
         UUID variant = ingestLabeled("variant-domain.invalid", 2099, GroundTruthLabel.SPAM);
 
+        // A standalone variant (story 08.01) has no run and no parent — both null.
         jdbc.update("""
                 insert into adversarial_emails (
                     id, variant_email_id, seed_email_id, parent_variant_id,
                     mutation_strategy, ground_truth_label, attacker_model, run_id, generation)
-                values (?, ?, ?, null, 'synonym', 'spam', 'test-attacker', ?, 1)
-                """, UUID.randomUUID(), variant, seed, UUID.randomUUID());
+                values (?, ?, ?, null, 'synonym', 'spam', 'test-attacker', null, null)
+                """, UUID.randomUUID(), variant, seed);
 
         SplitAudit audit = service.rebuild();
 
