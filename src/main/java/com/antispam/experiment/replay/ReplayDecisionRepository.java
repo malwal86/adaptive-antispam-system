@@ -1,5 +1,6 @@
 package com.antispam.experiment.replay;
 
+import com.antispam.common.JdbcParams;
 import com.antispam.common.JdbcTimestamps;
 import com.antispam.decision.Decision;
 import com.antispam.decision.ReasonCode;
@@ -122,11 +123,7 @@ public class ReplayDecisionRepository {
             ps.setString(6, scored.route().name());
             ps.setArray(7, connection.createArrayOf("text", reasonCodes));
             ps.setArray(8, connection.createArrayOf("text", routingReasons));
-            if (scored.posterior() == null) {
-                ps.setNull(9, java.sql.Types.DOUBLE);
-            } else {
-                ps.setDouble(9, scored.posterior());
-            }
+            JdbcParams.setNullableDouble(ps, 9, scored.posterior());
             return ps;
         });
         return inserted > 0;
