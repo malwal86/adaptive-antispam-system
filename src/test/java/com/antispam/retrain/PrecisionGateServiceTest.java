@@ -71,6 +71,31 @@ class PrecisionGateServiceTest {
                 .hasMessageContaining(RUN.toString());
     }
 
+    @Test
+    void grades_against_a_frozen_golden_version_when_one_is_named() {
+        // The version-comparable path (story 11.02): the candidate is graded on the immutable snapshot
+        // named by the version, not the live eval side.
+        when(decisions.findLabeledByRunIdInGoldenVersion(RUN, "golden-1")).thenReturn(List.of(
+                golden(GroundTruthLabel.SPAM, Decision.BLOCK),
+                golden(GroundTruthLabel.HAM, Decision.ALLOW)));
+        when(policies.findByVersion("cand")).thenReturn(Optional.of(candidatePolicy("model-7")));
+
+        GateResult result = service().evaluate(RUN, "golden-1");
+
+        assertThat(result.modelVersion()).isEqualTo("model-7");
+        assertThat(result.goldenSampleCount()).isEqualTo(2);
+        assertThat(result.precision()).isEqualTo(1.0);
+    }
+
+    @Test
+    void throws_when_the_named_golden_version_has_no_decisions_yet() {
+        when(decisions.findLabeledByRunIdInGoldenVersion(RUN, "golden-1")).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service().evaluate(RUN, "golden-1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("golden-1");
+    }
+
     private static LabeledReplayDecision golden(GroundTruthLabel label, Decision decision) {
         return new LabeledReplayDecision(
                 UUID.randomUUID(), decision, RouteUsed.MODEL, "cand", label);

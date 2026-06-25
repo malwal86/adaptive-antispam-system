@@ -77,6 +77,24 @@ public class ReplayDecisionRepository {
             order by r.email_id
             """;
 
+    // The same grading join, but pinned to a FROZEN golden version (story 11.02) instead of the live
+    // eval side. A frozen version is an immutable snapshot, so grading a candidate against one gives a
+    // precision that is comparable across model_versions — the live eval side shifts whenever the split
+    // is rebuilt, the frozen members never do. A row contributes only if it is in that version's
+    // membership; everything else is the 10.03 join unchanged.
+    private static final String SELECT_LABELED_BY_RUN_IN_GOLDEN_VERSION_SQL = """
+            select r.email_id       as email_id,
+                   r.decision       as decision,
+                   r.route_used     as route_used,
+                   r.policy_version as policy_version,
+                   g.label          as label
+            from replay_decisions r
+            join ground_truth_labels g on g.email_id = r.email_id
+            join golden_set_members m on m.email_id = r.email_id and m.version = ?
+            where r.run_id = ?
+            order by r.email_id
+            """;
+
     private final JdbcTemplate jdbc;
 
     @Autowired
@@ -135,6 +153,21 @@ public class ReplayDecisionRepository {
      */
     public List<LabeledReplayDecision> findLabeledByRunIdInGoldenSet(UUID runId) {
         return jdbc.query(SELECT_LABELED_BY_RUN_IN_GOLDEN_SET_SQL, LABELED_DECISION_MAPPER, runId);
+    }
+
+    /**
+     * A run's decisions joined to ground truth and restricted to a FROZEN golden version's membership,
+     * for the version-comparable gate (story 11.02). Same shape and ordering as
+     * {@link #findLabeledByRunIdInGoldenSet} but the held-out set is the immutable snapshot named by
+     * {@code goldenVersion} rather than the live eval side, so re-grading a different model version
+     * against the same version measures precision on byte-identical emails.
+     *
+     * @param runId         the replay run that scored the candidate
+     * @param goldenVersion the frozen golden version to grade against
+     */
+    public List<LabeledReplayDecision> findLabeledByRunIdInGoldenVersion(UUID runId, String goldenVersion) {
+        return jdbc.query(
+                SELECT_LABELED_BY_RUN_IN_GOLDEN_VERSION_SQL, LABELED_DECISION_MAPPER, goldenVersion, runId);
     }
 
     private static final RowMapper<ReplayDecision> REPLAY_DECISION_MAPPER = (rs, rowNum) -> {
