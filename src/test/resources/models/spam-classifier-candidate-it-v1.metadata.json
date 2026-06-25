@@ -1,0 +1,8 @@
+{
+  "modelVersion": "bootstrap-v1",
+  "trainingBaseRate": 0.6666666666666666,
+  "trainingSampleCount": 4500,
+  "trainingMaliciousCount": 3000,
+  "classLabels": ["ham", "spam", "phish"],
+  "note": "trainingBaseRate = P(spam or phish) over the training corpus — the base rate the calibrated model already encodes, subtracted once in log-odds fusion (story 04.04). Regenerate with ml/train_classifier.py."
+}

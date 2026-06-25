@@ -2,20 +2,25 @@ package com.antispam.decision.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import static org.mockito.Mockito.when;
+
 import com.antispam.decision.Decision;
 import com.antispam.decision.DecisionOutcome;
 import com.antispam.decision.RouteUsed;
 import com.antispam.decision.calibration.ActiveCalibrator;
+import com.antispam.decision.policy.PolicyRepository;
 import com.antispam.features.EmailFeatureExtractor;
 import com.antispam.ingest.Email;
 import com.antispam.ingest.ParsedEmail;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.mockito.Mockito;
 
 /**
  * The model path turns an email into a scored {@link DecisionOutcome}. Wired with
@@ -27,18 +32,26 @@ import org.junit.jupiter.api.TestInstance;
 class ModelContentClassifierTest {
 
     private OnnxModel model;
+    private ModelRegistry registry;
     private ActiveCalibrator calibrator;
     private ModelContentClassifier classifier;
 
     @BeforeAll
     void setUp() {
         model = new OnnxModel();
+        registry = new ModelRegistry(model, new ClasspathModelArtifactStore());
+        // No active policy here, so ServedModel falls back to the bootstrap version — the same model
+        // and version this test asserted before 10.04 made the serving path policy-driven.
+        PolicyRepository policies = Mockito.mock(PolicyRepository.class);
+        when(policies.findActive()).thenReturn(Optional.empty());
+        ServedModel servedModel = new ServedModel(registry, policies);
         calibrator = new ActiveCalibrator();
-        classifier = new ModelContentClassifier(new EmailFeatureExtractor(), model, calibrator);
+        classifier = new ModelContentClassifier(new EmailFeatureExtractor(), servedModel, calibrator);
     }
 
     @AfterAll
     void close() throws Exception {
+        registry.close();
         model.close();
     }
 

@@ -21,6 +21,11 @@ import org.springframework.stereotype.Component;
  * Phase-0 {@code PlaceholderContentClassifier} — the {@link ContentClassifier} seam
  * existed precisely so Epic 04 could swap a real model in here.
  *
+ * <p><b>Which model (story 10.04).</b> Scoring goes through {@link ServedModel}, not a fixed
+ * model, so the classifier always uses whatever model the <em>active policy</em> is calibrated
+ * for. A retrain promotion (or rollback) that flips the active flag therefore changes the model
+ * this path serves on the very next decision, with no redeploy.
+ *
  * <p><b>Features are extracted here, not read from storage.</b> Feature rows are
  * written asynchronously off the Kafka spine (Epic 02) and may not exist yet when
  * the synchronous analyze path reaches this point. Extraction is deterministic and
@@ -45,11 +50,11 @@ import org.springframework.stereotype.Component;
 public class ModelContentClassifier implements ContentClassifier {
 
     private final EmailFeatureExtractor extractor;
-    private final OnnxModel model;
+    private final ServedModel model;
     private final ActiveCalibrator calibrator;
 
     @Autowired
-    public ModelContentClassifier(EmailFeatureExtractor extractor, OnnxModel model,
+    public ModelContentClassifier(EmailFeatureExtractor extractor, ServedModel model,
             ActiveCalibrator calibrator) {
         this.extractor = extractor;
         this.model = model;

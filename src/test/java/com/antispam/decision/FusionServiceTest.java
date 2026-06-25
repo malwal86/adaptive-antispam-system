@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.antispam.decision.calibration.ActiveCalibrator;
 import com.antispam.decision.calibration.ProbabilityCalibrator;
+import com.antispam.decision.model.ClasspathModelArtifactStore;
 import com.antispam.decision.model.ModelMetadata;
 import com.antispam.decision.model.OnnxModel;
 import com.antispam.ingest.Email;
@@ -37,7 +38,7 @@ class FusionServiceTest {
     @Mock
     private ReputationService reputation;
 
-    private final ModelMetadata modelMetadata = new ModelMetadata();
+    private final ModelMetadata modelMetadata = new ModelMetadata(new ClasspathModelArtifactStore());
     private ActiveCalibrator calibrator;
     private FusionService fusionService;
 
