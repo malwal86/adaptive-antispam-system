@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { Icon } from "@/components/ui/icon";
+import { EMPHASIZED_EASE } from "@/lib/animation";
 import {
   ROUTE_BUCKETS,
   routeFraction,
@@ -26,8 +27,6 @@ const ROUTE_META: Record<RouteBucket, RouteMeta> = {
   reputation: { label: "Reputation", icon: "memory", fill: "bg-tier-allow", accent: "text-tier-allow" },
   llm: { label: "LLM", icon: "smart_toy", fill: "bg-tier-warn", accent: "text-tier-warn" },
 };
-
-const EASE = [0.05, 0.7, 0.1, 1] as const;
 
 /**
  * The route_used stacked bar (story 12.04): the live rules/reputation/LLM split of how decisions
@@ -59,7 +58,7 @@ export function RouteMixBar({ stats }: { stats: StreamStats }) {
                 className={cn("h-full", ROUTE_META[bucket].fill)}
                 initial={false}
                 animate={{ width: `${fraction * 100}%` }}
-                transition={{ duration: reduceMotion ? 0 : 0.4, ease: EASE }}
+                transition={{ duration: reduceMotion ? 0 : 0.4, ease: EMPHASIZED_EASE }}
               />
             );
           })

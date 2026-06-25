@@ -2,10 +2,9 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { Icon } from "@/components/ui/icon";
+import { EMPHASIZED_EASE } from "@/lib/animation";
 import { atCap, costRatio, formatUsd } from "@/lib/streamStats";
 import { cn } from "@/lib/utils";
-
-const EASE = [0.05, 0.7, 0.1, 1] as const;
 
 interface CostMeterProps {
   /** Cumulative real LLM spend over the session (summed from the live feed). */
@@ -45,7 +44,7 @@ export function CostMeter({ costUsd, capUsd, enforced }: CostMeterProps) {
           className={cn("h-full rounded-full", capped ? "bg-tier-block" : "bg-primary")}
           initial={false}
           animate={{ width: `${ratio * 100}%` }}
-          transition={{ duration: reduceMotion ? 0 : 0.4, ease: EASE }}
+          transition={{ duration: reduceMotion ? 0 : 0.4, ease: EMPHASIZED_EASE }}
         />
       </div>
 

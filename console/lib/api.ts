@@ -42,16 +42,22 @@ export interface SeedSample {
   senderDomain: string | null;
 }
 
-async function postAnalyze(body: Record<string, unknown>): Promise<AnalyzeResponse> {
-  const res = await fetch(`${API_BASE_URL}/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+/** Parses a successful JSON response, or throws the API's error message on a non-2xx status. */
+export async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     throw new Error(await errorMessage(res));
   }
-  return (await res.json()) as AnalyzeResponse;
+  return (await res.json()) as T;
+}
+
+async function postAnalyze(body: Record<string, unknown>): Promise<AnalyzeResponse> {
+  return readJson(
+    await fetch(`${API_BASE_URL}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 /** Analyze a pasted raw email. */
@@ -66,11 +72,7 @@ export function analyzeById(emailId: string): Promise<AnalyzeResponse> {
 
 /** Labeled seed samples for the picker. */
 export async function fetchSamples(perLabel = 4): Promise<SeedSample[]> {
-  const res = await fetch(`${API_BASE_URL}/seed/samples?perLabel=${perLabel}`);
-  if (!res.ok) {
-    throw new Error(await errorMessage(res));
-  }
-  return (await res.json()) as SeedSample[];
+  return readJson(await fetch(`${API_BASE_URL}/seed/samples?perLabel=${perLabel}`));
 }
 
 export async function errorMessage(res: Response): Promise<string> {
