@@ -153,6 +153,57 @@ curl -s -X POST https://living-antispam.onrender.com/analyze \
 # Console: open the Vercel URL, paste an email or pick a sample, watch the card.
 ```
 
+## Cost envelope & the pause lever
+
+The hosted demo is meant to stay **always-on through interview season without
+runaway cost**. Two facts make that affordable:
+
+- **The flat layer never pauses.** Render (Java API) and Vercel (console) are on
+  flat/effectively-always-on plans, so the public URLs answer `/health` and serve
+  the console continuously. LLM spend can't run away either — it's bounded by the
+  Redis cost cap (story 05.04), not hope.
+- **The metered layer can pause between demos.** The two dependencies that bill by
+  uptime — **Aiven** (Kafka) and **Supabase** (Postgres) — are the cheapest idle
+  lever. Powering Aiven off and pausing the Supabase project preserves both
+  (config + data) while stopping their compute meters.
+
+| State | Roughly | What's running |
+|---|---|---|
+| **Idle floor** | **~$35/mo** | Render + Vercel up; Aiven powered off; Supabase paused |
+| **PRD floor** | **~$70/mo** | everything up, light use |
+| **Active season** | **~$100–140/mo** | everything up, demo traffic + LLM within the cap |
+
+### The lever — `ops/cost-lever.sh`
+
+A reproducible IaC toggle over the two metered deps (it deliberately leaves
+Render + Vercel up so the demo never 404s):
+
+```bash
+ops/cost-lever.sh pause     # power off Aiven + pause Supabase  → idle ~$35/mo
+ops/cost-lever.sh resume    # power on  Aiven + restore Supabase → back to live
+ops/cost-lever.sh status    # report the current power state of both
+```
+
+It is **idempotent** (re-running `pause`/`resume` is a no-op) and takes every
+credential from the environment — never the repo (same rule as `render.yaml`):
+
+```bash
+export AIVEN_TOKEN=...            AIVEN_PROJECT=...   AIVEN_KAFKA_SERVICE=...
+export SUPABASE_ACCESS_TOKEN=...  SUPABASE_PROJECT_REF=...
+```
+
+**Ops drill (spin back up before a demo):** `ops/cost-lever.sh resume`, wait for
+Supabase to report `ACTIVE_HEALTHY` (~a minute) and Aiven to leave `POWEROFF`,
+then confirm the live API recovered:
+
+```bash
+curl -s https://living-antispam.onrender.com/health   # → {"status":"UP"}
+curl -s https://living-antispam.onrender.com/info      # build version of the live image
+```
+
+The build version in `/info` (story 01.01, stamped by Gradle `buildInfo`) is how
+you confirm *which* build is serving after a resume or a restart.
+
 ## Notes & gotchas
 
 - **Cold starts:** Render's free/starter plan sleeps idle services; the first
