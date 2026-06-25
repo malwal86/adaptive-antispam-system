@@ -64,6 +64,50 @@ function pendingThenResolvedBody(): string {
   );
 }
 
+// A warm-up → attack sequence for the story panel (story 12.04). Two good model decisions earn
+// trust (low posterior), then three LLM-routed attack decisions drive the posterior up (trust
+// collapses) and each charges real cost — enough to exhaust the 0.5 daily cap, halting the meter.
+function attackBody(): string {
+  const warmUp = [0.08, 0.12].map((posterior, i) => ({
+    ...ALLOW,
+    emailId: `warm-${i}`,
+    classificationId: `w${i}`,
+    tier: "allow",
+    routeUsed: "model",
+    posterior,
+  }));
+  const attack = [0.82, 0.88, 0.93].map((posterior, i) => ({
+    ...BLOCK,
+    emailId: `atk-${i}`,
+    classificationId: `a${i}`,
+    tier: "quarantine",
+    reasonCodes: [],
+    routeUsed: "llm",
+    posterior,
+    llmCostUsd: 0.2,
+  }));
+  return [...warmUp, ...attack]
+    .map((d, i) => `id: ${i + 1}\nevent: decision\ndata: ${JSON.stringify(d)}\n\n`)
+    .join("");
+}
+
+// One arena run where the fixed baseline let far more danger through (60%) than the current model
+// (10%) — a real "danger missed by baseline" row (story 08.04).
+const TREND = {
+  points: [
+    {
+      runId: "abcdef12-3456-7890-abcd-ef1234567890",
+      runAt: "2026-06-02T00:00:00Z",
+      bypassRate: 0.1,
+      baselineBypassRate: 0.6,
+      precisionFpRate: null,
+    },
+  ],
+  firstBypassRate: 0.1,
+  latestBypassRate: 0.1,
+  improved: false,
+};
+
 const POLICY = {
   version: "bootstrap-v1",
   active: true,
@@ -97,6 +141,8 @@ async function stubControls(page: Page, onThresholds?: (body: unknown) => void) 
     onThresholds?.(route.request().postDataJSON());
     return route.fulfill({ json: { ...POLICY, version: "console-1", warnThreshold: 0.1 } });
   });
+  // The story panel reads the arena bypass trend for its baseline-miss table.
+  await page.route(`${API}/arena/trend**`, (route) => route.fulfill({ json: TREND }));
 }
 
 test("renders three panes and streams decisions in live, newest-first", async ({ page }) => {
@@ -168,6 +214,35 @@ test("a threshold change posts new thresholds and is acknowledged", async ({ pag
 
   await expect(page.getByTestId("apply-status").first()).toHaveAttribute("data-status", "applied");
   expect(posted).toMatchObject({ warnThreshold: 0.1 });
+});
+
+test("the story panel reflects the attack: trust collapses, routing shifts to LLM, cost halts at the cap, baseline table populated", async ({
+  page,
+}) => {
+  await stubStream(page, undefined, attackBody());
+  await stubControls(page);
+  await page.goto("/");
+
+  // Reputation: the curve renders and flags the collapse the attack caused (high posterior → low trust).
+  const chart = page.getByTestId("reputation-chart");
+  await expect(chart).toBeVisible();
+  await expect(chart).toHaveAttribute("data-collapsing", "true");
+  await expect(page.getByTestId("reputation-collapse")).toBeVisible();
+
+  // Route mix: the real rules/reputation/LLM split — two model warm-ups, three LLM attack decisions.
+  await expect(page.getByTestId("route-count-reputation")).toHaveText("2");
+  await expect(page.getByTestId("route-count-llm")).toHaveText("3");
+
+  // Cost meter: real summed spend (3 × $0.20) exhausts the $0.50 cap and the meter visibly halts.
+  await expect(page.getByTestId("cost-spent")).toHaveText("$0.60");
+  await expect(page.getByTestId("cost-meter")).toHaveAttribute("data-cost-at-cap", "true");
+  await expect(page.getByTestId("cost-cap-hit")).toBeVisible();
+
+  // Baseline-miss table: the run where the baseline let danger through that the current model caught.
+  const rows = page.getByTestId("baseline-miss-row");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("base 60%");
+  await expect(rows.first()).toContainText("now 10%");
 });
 
 test("auto-reconnects when the connection drops, without duplicating cards", async ({ page }) => {

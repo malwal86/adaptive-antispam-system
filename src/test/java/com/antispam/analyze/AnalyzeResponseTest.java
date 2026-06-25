@@ -7,6 +7,7 @@ import com.antispam.decision.Decision;
 import com.antispam.decision.ModelScores;
 import com.antispam.decision.ReasonCode;
 import com.antispam.decision.RouteUsed;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -48,6 +49,25 @@ class AnalyzeResponseTest {
         // A block is withheld, not delivered; the decision records its policy.
         assertThat(response.delivered()).isFalse();
         assertThat(response.policyVersion()).isEqualTo("bootstrap-v1");
+        // No LLM call on a hard-rule short-circuit, so no cost — the field is omitted.
+        assertThat(response.llmCostUsd()).isNull();
+    }
+
+    @Test
+    void surfaces_the_llm_cost_on_an_llm_routed_row_for_the_cost_meter() {
+        // The Abuse Lab cost meter (story 12.04) ticks up with real per-decision spend, so the
+        // response projects the LLM call's cost recorded on the row (story 05.02). It rides the
+        // same live feed every card does — no separate cost endpoint.
+        Classification classification = new Classification(
+                UUID.randomUUID(), UUID.randomUUID(), Decision.QUARANTINE,
+                List.of(), RouteUsed.LLM, 1200L,
+                new ModelScores(0.55, 0.40, "bootstrap-v1"), null, "bootstrap-v1",
+                new BigDecimal("0.0123"), Instant.now());
+
+        AnalyzeResponse response = AnalyzeResponse.from(classification, false);
+
+        assertThat(response.routeUsed()).isEqualTo("llm");
+        assertThat(response.llmCostUsd()).isEqualTo(0.0123);
     }
 
     @Test

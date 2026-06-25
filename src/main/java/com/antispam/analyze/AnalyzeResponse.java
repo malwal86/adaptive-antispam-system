@@ -52,6 +52,11 @@ import java.util.UUID;
  *                         signal that makes {@code warn} distinct (story 04.05)
  * @param policyVersion    the active policy the decision was made under, or {@code null} for a
  *                         pre-04.05 decision
+ * @param llmCostUsd       the USD cost of the LLM call on an {@code llm}-route row (story 05.02), or
+ *                         {@code null} on any verdict that did not call the LLM. The Abuse Lab cost
+ *                         meter (story 12.04) sums this across the live feed to tick up real spend,
+ *                         so it binds to the same decisions every card does rather than a separate
+ *                         endpoint
  * @param decidedAt        when the decision was recorded
  * @param duplicate        true when the submitted email was already ingested
  *                         (identical bytes, or analysed by id) — no new canonical
@@ -74,6 +79,7 @@ public record AnalyzeResponse(
         Double uncertaintyBand,
         boolean delivered,
         String policyVersion,
+        Double llmCostUsd,
         Instant decidedAt,
         boolean duplicate) {
 
@@ -97,6 +103,7 @@ public record AnalyzeResponse(
                 fused == null ? null : fused.uncertaintyBand(),
                 classification.decision().delivers(),
                 classification.policyVersion(),
+                classification.llmCostUsd() == null ? null : classification.llmCostUsd().doubleValue(),
                 classification.createdAt(),
                 duplicate);
     }
