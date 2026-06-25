@@ -145,6 +145,18 @@ async function stubControls(page: Page, onThresholds?: (body: unknown) => void) 
   await page.route(`${API}/arena/trend**`, (route) => route.fulfill({ json: TREND }));
 }
 
+// The thunderclap trigger (story 12.05): the runner accepts the start and injects asynchronously, so
+// the endpoint returns 202 immediately while the beats arrive on the already-open decision stream.
+async function stubScenario(page: Page, onStart?: () => void) {
+  await page.route(`${API}/controls/scenarios/*/start`, (route) => {
+    onStart?.();
+    return route.fulfill({
+      status: 202,
+      json: { scenario: "sender_warms_up_then_attacks", steps: 18, seed: 42, shadowPolicyVersion: "thunderclap-shadow-1" },
+    });
+  });
+}
+
 test("renders three panes and streams decisions in live, newest-first", async ({ page }) => {
   await stubStream(page);
   await stubControls(page);
@@ -243,6 +255,34 @@ test("the story panel reflects the attack: trust collapses, routing shifts to LL
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("base 60%");
   await expect(rows.first()).toContainText("now 10%");
+});
+
+test("running the thunderclap from the rail triggers the runner and the panels animate its beats", async ({
+  page,
+}) => {
+  let started = 0;
+  // The stream carries the warm-up → attack sequence the runner would drive; the button click is what
+  // invokes that runner (here stubbed), proving the single-control-action wiring end to end.
+  await stubStream(page, undefined, attackBody());
+  await stubControls(page);
+  await stubScenario(page, () => {
+    started += 1;
+  });
+  await page.goto("/");
+
+  // One control action: run the selected scenario → the runner endpoint is invoked and acknowledged.
+  await page.getByTestId("scenario-start").click();
+  await expect.poll(() => started).toBe(1);
+  await expect(
+    page.getByTestId("scenario-control").getByTestId("apply-status"),
+  ).toHaveAttribute("data-status", "applied");
+
+  // The story panel animates the beats the run drives on the live stream: reputation collapse,
+  // routing shifting to the LLM, and the cost meter halting at the cap.
+  await expect(page.getByTestId("reputation-chart")).toHaveAttribute("data-collapsing", "true");
+  await expect(page.getByTestId("reputation-collapse")).toBeVisible();
+  await expect(page.getByTestId("route-count-llm")).toHaveText("3");
+  await expect(page.getByTestId("cost-meter")).toHaveAttribute("data-cost-at-cap", "true");
 });
 
 test("auto-reconnects when the connection drops, without duplicating cards", async ({ page }) => {

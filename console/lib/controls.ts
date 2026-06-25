@@ -33,6 +33,15 @@ export interface BudgetCaps {
   monthlyCapUsd: number;
 }
 
+/** Acknowledgement of a started scenario (story 12.05) — what the runner accepted. */
+export interface ScenarioRun {
+  scenario: string;
+  steps: number;
+  seed: number;
+  /** The shadow policy designated for the run, omitted when none was derivable. */
+  shadowPolicyVersion?: string;
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     throw new Error(await errorMessage(res));
@@ -72,6 +81,19 @@ export async function updateBudget(dailyCapUsd: number, monthlyCapUsd: number): 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dailyCapUsd, monthlyCapUsd }),
+    }),
+  );
+}
+
+/**
+ * Starts a scripted scenario (story 12.05): one control action that drives the named scenario through
+ * the live pipeline. Returns immediately with the run acknowledgement — the emails are injected
+ * asynchronously and animate the centre stream and story panel as they land.
+ */
+export async function startScenario(scenario: string): Promise<ScenarioRun> {
+  return readJson(
+    await fetch(`${API_BASE_URL}/controls/scenarios/${encodeURIComponent(scenario)}/start`, {
+      method: "POST",
     }),
   );
 }

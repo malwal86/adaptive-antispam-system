@@ -270,6 +270,14 @@ antispam:
   # redeploy.
   campaign-clustering:
     similarity-threshold: ${ANTISPAM_CAMPAIGN_SIMILARITY_THRESHOLD:0.80}
+  # The thunderclap demo scenario (story 12.05): one scripted run that warms a sender then injects a
+  # mutated phishing campaign, landing every headline beat on the live stream from a single control
+  # action. step-delay paces the injected emails so the beats unfold visibly in the console rather
+  # than arriving in one burst; default-seed fixes the no-argument run so it is exactly reproducible
+  # (pass ?seed=N to re-mutate the campaign). Both are tunable without a redeploy.
+  scenario:
+    step-delay: ${ANTISPAM_SCENARIO_STEP_DELAY:400ms}
+    default-seed: ${ANTISPAM_SCENARIO_DEFAULT_SEED:42}
   # Synthetic-user personas (story 07.01): the controllable population that drives the feedback
   # loop (PRD §Subsystem 7). A persona is data, not code — its biases (click/report/risk, all in
   # [0,1]) and its malicious flag (folded into config_json) live here, so adding a benign or
