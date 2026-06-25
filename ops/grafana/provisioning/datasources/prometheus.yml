@@ -1,0 +1,19 @@
+# Grafana datasource as code (story 13.02). Provisioned at startup so the stack comes up with a
+# working Prometheus connection and no manual clicking. The fixed `uid: prometheus` is what every
+# panel target in ops/grafana/dashboards/antispam-ops.json references, so the dashboard renders
+# populated the moment Grafana boots.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    # Points at the Prometheus service in docker-compose.observability.yml. Override
+    # GF_DATASOURCE_PROMETHEUS_URL or edit here to target a hosted Prometheus.
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
