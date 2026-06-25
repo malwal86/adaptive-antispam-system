@@ -3,10 +3,10 @@ package com.antispam.decision.model;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,19 +22,27 @@ import org.springframework.stereotype.Component;
  * promotes a model trained on a different class balance, its base rate travels with it
  * and fusion stays correct without a code change.
  *
- * <p>Sidecars are read from the classpath on first request and cached per version. A
- * missing or malformed sidecar is a packaging defect, not a runtime condition, so it
- * fails loudly rather than silently substituting a default that would quietly bias every
- * fused score.
+ * <p>Sidecars are fetched through the {@link ModelArtifactStore} on first request and cached per
+ * version. Going through the store rather than the classpath directly is what keeps fusion correct
+ * after a promotion (story 10.04): a promoted candidate's sidecar lives only in remote storage, so a
+ * classpath-only read would miss it and throw on <em>every</em> decision once the candidate is served.
+ * The store resolves the bundled bootstrap sidecar from the classpath and a promoted candidate's from
+ * remote storage, transparently. A missing or malformed sidecar is a packaging defect, not a runtime
+ * condition, so it fails loudly rather than silently substituting a default that would quietly bias
+ * every fused score.
  */
 @Component
 public class ModelMetadata {
 
-    private static final String RESOURCE_FORMAT = "/models/spam-classifier-%s.metadata.json";
-
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final Map<String, Double> baseRateByVersion = new ConcurrentHashMap<>();
+    private final ModelArtifactStore artifactStore;
+
+    @Autowired
+    public ModelMetadata(ModelArtifactStore artifactStore) {
+        this.artifactStore = artifactStore;
+    }
 
     /**
      * The training base rate {@code π_train} for {@code modelVersion}: the fraction of
@@ -47,22 +55,24 @@ public class ModelMetadata {
     }
 
     private double loadBaseRate(String modelVersion) {
-        String resource = String.format(RESOURCE_FORMAT, modelVersion);
-        try (InputStream in = ModelMetadata.class.getResourceAsStream(resource)) {
-            if (in == null) {
-                throw new IllegalStateException(
-                        "no training metadata on classpath for model version " + modelVersion
-                                + " (expected " + resource + ")");
-            }
-            TrainingMetadata metadata = mapper.readValue(in, TrainingMetadata.class);
+        byte[] sidecar;
+        try {
+            sidecar = artifactStore.metadataBytes(modelVersion);
+        } catch (ModelArtifactNotFoundException e) {
+            throw new IllegalStateException(
+                    "no training metadata for model version " + modelVersion, e);
+        }
+        try {
+            TrainingMetadata metadata = mapper.readValue(sidecar, TrainingMetadata.class);
             double baseRate = metadata.trainingBaseRate();
             if (baseRate <= 0.0 || baseRate >= 1.0 || Double.isNaN(baseRate)) {
                 throw new IllegalStateException("trainingBaseRate for model version " + modelVersion
-                        + " must be in (0,1) but was " + baseRate + " in " + resource);
+                        + " must be in (0,1) but was " + baseRate);
             }
             return baseRate;
         } catch (IOException e) {
-            throw new UncheckedIOException("failed to read training metadata " + resource, e);
+            throw new UncheckedIOException(
+                    "failed to parse training metadata for model version " + modelVersion, e);
         }
     }
 

@@ -193,6 +193,10 @@ models/local/
 # ml/train_classifier.py. The large retrained models (Epic 10) are what the rule
 # above keeps out of git.
 !src/main/resources/models/*.onnx
+# ...and the tiny candidate fixture the promotion integration test (story 10.04) serves
+# from the test classpath as a stand-in for a Supabase-staged candidate. A copy of the
+# bootstrap model under a candidate version name; small and reproducible, so track it.
+!src/test/resources/models/*.onnx
 
 # ---------------------------------------------------------------------------
 # Misc

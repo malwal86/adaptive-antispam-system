@@ -165,6 +165,16 @@ management:
 # is the spine's replay window (Postgres remains the source of truth). On a
 # single-broker local/test cluster, override replication-factor to 1.
 app:
+  # Supabase Storage bucket the retrain loop stages model candidates into (story 10.04). The CI
+  # train job uploads candidates/<version>/spam-classifier-<version>.onnx here; on a passed gate,
+  # promotion fetches that artifact and the serving registry lazy-loads it. Deliberately optional:
+  # blank url means "no remote store", and the app boots and serves the classpath bootstrap model
+  # unaffected — only fetching a PROMOTED candidate needs these set. Real credentials arrive through
+  # the environment, never the repo.
+  supabase:
+    url: ${APP_SUPABASE_URL:}
+    service-key: ${APP_SUPABASE_KEY:}
+    bucket: ${APP_SUPABASE_BUCKET:models}
   kafka:
     enabled: true
     raw-topic:
