@@ -66,6 +66,18 @@ class SupabaseModelArtifactStoreTest {
     }
 
     @Test
+    void reports_not_found_without_a_request_when_unconfigured() {
+        // A blank URL means no remote storage: every fetch is a clean not-found, never a request
+        // against an empty base URL (which would fail obscurely with "URI with undefined scheme").
+        SupabaseModelArtifactStore store = new SupabaseModelArtifactStore(
+                RestClient.builder(), new SupabaseStorageProperties("", "", BUCKET));
+
+        assertThatThrownBy(() -> store.modelBytes("cand-v1"))
+                .isInstanceOf(ModelArtifactNotFoundException.class)
+                .hasMessageContaining("no Supabase storage configured");
+    }
+
+    @Test
     void reports_not_found_when_the_object_is_absent() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

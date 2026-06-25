@@ -2,7 +2,6 @@ package com.antispam.decision.model;
 
 import com.antispam.config.SupabaseStorageProperties;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -17,31 +16,38 @@ import org.springframework.web.client.RestClientException;
  * fallback store the {@link CompositeModelArtifactStore} consults after the classpath, so it is only
  * ever asked for versions the jar does not carry — the promoted candidates.
  *
- * <p>The bean exists only when {@code app.supabase.url} is set ({@link ConditionalOnProperty}): a
- * deployment with no remote storage has no Supabase store at all and serves the bootstrap model from
- * the classpath, rather than holding a bean that would fail on first use. A missing object (HTTP 404)
- * or any transport failure becomes a {@link ModelArtifactNotFoundException} so the absence reads the
- * same regardless of which store could not find it.
+ * <p><b>Optional by configuration, not by bean wiring.</b> When {@code app.supabase.url} is blank (no
+ * remote storage — local, dev, tests, a bootstrap-only deployment) this store is unconfigured and every
+ * fetch is a clean {@link ModelArtifactNotFoundException}: the deployment serves the bootstrap model
+ * from the classpath and a promoted candidate simply is not fetchable. The store guards on the blank
+ * URL itself rather than via {@code @ConditionalOnProperty}, because an empty environment variable still
+ * satisfies that condition and would leave a {@link RestClient} with no base URL that fails obscurely
+ * ("URI with undefined scheme") on first use instead of reporting an honest absence.
  */
 @Component
-@ConditionalOnProperty(prefix = "app.supabase", name = "url")
 public class SupabaseModelArtifactStore implements ModelArtifactStore {
 
     private static final String OBJECT_PATH_FORMAT = "/storage/v1/object/%s/candidates/%s/%s";
     private static final String MODEL_FILE_FORMAT = "spam-classifier-%s.onnx";
     private static final String METADATA_FILE_FORMAT = "spam-classifier-%s.metadata.json";
 
-    private final RestClient restClient;
+    private final boolean configured;
     private final String bucket;
+    private final RestClient restClient;
 
     @Autowired
     public SupabaseModelArtifactStore(RestClient.Builder restClientBuilder,
             SupabaseStorageProperties properties) {
+        this.configured = properties.isConfigured();
         this.bucket = properties.bucket();
-        this.restClient = restClientBuilder
-                .baseUrl(properties.url())
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + properties.serviceKey())
-                .build();
+        // Build the client only when a base URL is configured; an unconfigured store never makes a
+        // request, so it needs no client (and must not hold one with an empty base URL).
+        this.restClient = configured
+                ? restClientBuilder
+                        .baseUrl(properties.url())
+                        .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + properties.serviceKey())
+                        .build()
+                : null;
     }
 
     @Override
@@ -55,6 +61,11 @@ public class SupabaseModelArtifactStore implements ModelArtifactStore {
     }
 
     private byte[] fetch(String fileName, String modelVersion, String what) {
+        if (!configured) {
+            throw new ModelArtifactNotFoundException(
+                    "no Supabase storage configured (app.supabase.url is blank); cannot fetch " + what
+                            + " for model version " + modelVersion);
+        }
         String path = String.format(OBJECT_PATH_FORMAT, bucket, modelVersion, fileName);
         try {
             byte[] body = restClient.get().uri(path).retrieve().body(byte[].class);
