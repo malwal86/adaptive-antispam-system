@@ -17,7 +17,7 @@ import { useDecisionStream } from "@/lib/useDecisionStream";
  * client — it subscribes and renders; it never decides.
  */
 export function LabConsole() {
-  const { decisions, status } = useDecisionStream();
+  const { items, status } = useDecisionStream();
 
   return (
     <div className="flex h-screen flex-col">
@@ -46,7 +46,7 @@ export function LabConsole() {
         <ControlsRail />
 
         <div className="flex min-h-0 flex-col rounded-lg border border-outline/50 bg-surface-container/40 p-4">
-          <LiveStream decisions={decisions} status={status} />
+          <LiveStream items={items} status={status} />
         </div>
 
         <RailPanel

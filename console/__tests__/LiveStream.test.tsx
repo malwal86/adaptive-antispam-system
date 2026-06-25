@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { LiveStream } from "@/components/lab/LiveStream";
 import type { AnalyzeResponse } from "@/lib/api";
+import type { StreamItem } from "@/lib/decisionStream";
 
-function decision(overrides: Partial<AnalyzeResponse> = {}): AnalyzeResponse {
-  return {
+function card(overrides: Partial<AnalyzeResponse> = {}, resolved = false): StreamItem {
+  const decision: AnalyzeResponse = {
     emailId: "d7db7c1d-59aa-4e88-83a3-895c13b39907",
     classificationId: "b5c0b6eb-64d5-4932-97a0-33fd65576adf",
     tier: "block",
@@ -16,27 +17,28 @@ function decision(overrides: Partial<AnalyzeResponse> = {}): AnalyzeResponse {
     duplicate: false,
     ...overrides,
   };
+  return { decision, resolved, classificationIds: [decision.classificationId] };
 }
 
 describe("LiveStream", () => {
   it("shows the waiting empty state with no decisions", () => {
-    render(<LiveStream decisions={[]} status="open" />);
+    render(<LiveStream items={[]} status="open" />);
     expect(screen.getByTestId("stream-empty")).toBeInTheDocument();
     expect(screen.queryByTestId("live-decision-card")).not.toBeInTheDocument();
   });
 
   it("reflects the connection status", () => {
-    render(<LiveStream decisions={[]} status="reconnecting" />);
+    render(<LiveStream items={[]} status="reconnecting" />);
     expect(screen.getByTestId("stream-status")).toHaveAttribute("data-status", "reconnecting");
   });
 
-  it("renders a card per decision, tier-coded, newest-first", () => {
+  it("renders a card per email, tier-coded, newest-first", () => {
     render(
       <LiveStream
         status="open"
-        decisions={[
-          decision({ classificationId: "b", tier: "block" }),
-          decision({ classificationId: "a", tier: "allow", reasonCodes: [], routeUsed: "model" }),
+        items={[
+          card({ emailId: "e-block", classificationId: "b", tier: "block" }),
+          card({ emailId: "e-allow", classificationId: "a", tier: "allow", reasonCodes: [], routeUsed: "model" }),
         ]}
       />,
     );

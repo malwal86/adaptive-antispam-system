@@ -6,11 +6,12 @@ import {
   appendDecisions,
   openDecisionStream,
   type DecisionStreamOptions,
+  type StreamItem,
   type StreamStatus,
 } from "./decisionStream";
 
 export interface LiveDecisions {
-  decisions: AnalyzeResponse[];
+  items: StreamItem[];
   status: StreamStatus;
 }
 
@@ -25,7 +26,7 @@ type HookOptions = Pick<DecisionStreamOptions, "url" | "eventSourceFactory">;
  * handled by the underlying EventSource.
  */
 export function useDecisionStream(options: HookOptions = {}): LiveDecisions {
-  const [decisions, setDecisions] = useState<AnalyzeResponse[]>([]);
+  const [items, setItems] = useState<StreamItem[]>([]);
   const [status, setStatus] = useState<StreamStatus>("connecting");
 
   const pending = useRef<AnalyzeResponse[]>([]);
@@ -50,7 +51,7 @@ export function useDecisionStream(options: HookOptions = {}): LiveDecisions {
       frame.current = null;
       const batch = pending.current;
       pending.current = [];
-      setDecisions((current) => appendDecisions(current, batch));
+      setItems((current) => appendDecisions(current, batch));
     };
 
     const handle = openDecisionStream({
@@ -75,5 +76,5 @@ export function useDecisionStream(options: HookOptions = {}): LiveDecisions {
     };
   }, [url, factory]);
 
-  return { decisions, status };
+  return { items, status };
 }

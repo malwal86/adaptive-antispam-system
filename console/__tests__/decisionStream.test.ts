@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   appendDecisions,
+  isPending,
   openDecisionStream,
   parseDecision,
   MAX_LIVE_DECISIONS,
+  type StreamItem,
   type StreamStatus,
 } from "@/lib/decisionStream";
 import type { AnalyzeResponse } from "@/lib/api";
@@ -23,20 +25,78 @@ function decision(id: string, overrides: Partial<AnalyzeResponse> = {}): Analyze
   };
 }
 
+/** A settled (not-yet-resolved) card around a single decision, for seeding `current`. */
+function card(id: string, overrides: Partial<AnalyzeResponse> = {}): StreamItem {
+  const d = decision(id, overrides);
+  return { decision: d, resolved: false, classificationIds: [d.classificationId] };
+}
+
+const ids = (list: StreamItem[]) => list.map((item) => item.decision.classificationId);
+const tiers = (list: StreamItem[]) => list.map((item) => item.decision.tier);
+
 describe("appendDecisions", () => {
   it("prepends newest-first", () => {
-    const list = appendDecisions([decision("a")], [decision("b")]);
-    expect(list.map((d) => d.classificationId)).toEqual(["b", "a"]);
+    const list = appendDecisions([card("a")], [decision("b")]);
+    expect(ids(list)).toEqual(["b", "a"]);
   });
 
   it("folds a batch newest-first (last of the batch leads)", () => {
     const list = appendDecisions([], [decision("a"), decision("b"), decision("c")]);
-    expect(list.map((d) => d.classificationId)).toEqual(["c", "b", "a"]);
+    expect(ids(list)).toEqual(["c", "b", "a"]);
   });
 
   it("de-duplicates by classificationId so a reconnect replay never doubles a card", () => {
-    const list = appendDecisions([decision("a"), decision("b")], [decision("b"), decision("c")]);
-    expect(list.map((d) => d.classificationId)).toEqual(["c", "a", "b"]);
+    const list = appendDecisions([card("a"), card("b")], [decision("b"), decision("c")]);
+    expect(ids(list)).toEqual(["c", "a", "b"]);
+  });
+
+  it("marks a fresh single decision as unresolved", () => {
+    const list = appendDecisions([], [decision("a")]);
+    expect(list[0].resolved).toBe(false);
+  });
+
+  it("collapses a quarantine-pending email and its resolution into one card, flipped in place", () => {
+    const pending = decision("p", {
+      emailId: "e1",
+      tier: "quarantine",
+      routeUsed: "llm",
+      reasonCodes: [],
+    });
+    const resolvedTo = decision("r", {
+      emailId: "e1",
+      tier: "allow",
+      routeUsed: "llm",
+      reasonCodes: [],
+    });
+
+    // The pending card arrives first, then a later (unrelated) card lands on top of it;
+    // the resolution must update the pending card where it sits, not jump it back to the top.
+    const list = appendDecisions([], [pending, decision("n", { emailId: "e0" }), resolvedTo]);
+
+    expect(list).toHaveLength(2);
+    const resolved = list.find((item) => item.decision.emailId === "e1")!;
+    expect(resolved.decision.classificationId).toBe("r");
+    expect(resolved.decision.tier).toBe("allow");
+    expect(resolved.resolved).toBe(true);
+    expect(resolved.classificationIds).toEqual(["p", "r"]);
+    // In place: "n" still leads, the resolved card stays behind it.
+    expect(ids(list)).toEqual(["n", "r"]);
+  });
+
+  it("never retracts a resolution when an earlier pending row is replayed", () => {
+    const pending = decision("p", { emailId: "e1", tier: "quarantine", routeUsed: "llm" });
+    const resolvedTo = decision("r", { emailId: "e1", tier: "allow", routeUsed: "llm" });
+    const settled = appendDecisions([], [pending, resolvedTo]);
+
+    // A reconnect replays both rows; the fold is idempotent, so nothing changes.
+    const replayed = appendDecisions(settled, [pending, resolvedTo]);
+    expect(replayed).toBe(settled);
+    expect(tiers(replayed)).toEqual(["allow"]);
+  });
+
+  it("keeps distinct emails as separate cards", () => {
+    const list = appendDecisions([], [decision("a", { emailId: "e1" }), decision("b", { emailId: "e2" })]);
+    expect(list).toHaveLength(2);
   });
 
   it("caps the list to bound memory under a high event rate", () => {
@@ -46,9 +106,28 @@ describe("appendDecisions", () => {
   });
 
   it("returns the same reference when nothing fresh arrives", () => {
-    const current = [decision("a")];
+    const current = [card("a")];
     expect(appendDecisions(current, [])).toBe(current);
     expect(appendDecisions(current, [decision("a")])).toBe(current);
+  });
+});
+
+describe("isPending", () => {
+  it("is pending while an LLM-route quarantine is unresolved", () => {
+    expect(isPending(card("p", { tier: "quarantine", routeUsed: "llm" }))).toBe(true);
+  });
+
+  it("is not pending once resolved, whatever the final tier", () => {
+    const confirmed: StreamItem = {
+      ...card("r", { tier: "quarantine", routeUsed: "llm" }),
+      resolved: true,
+    };
+    expect(isPending(confirmed)).toBe(false);
+  });
+
+  it("is not pending for a final model-route quarantine or any other tier", () => {
+    expect(isPending(card("m", { tier: "quarantine", routeUsed: "model" }))).toBe(false);
+    expect(isPending(card("b", { tier: "block", routeUsed: "hard_rule" }))).toBe(false);
   });
 });
 

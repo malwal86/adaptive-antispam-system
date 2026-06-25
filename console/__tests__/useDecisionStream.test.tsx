@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { useDecisionStream } from "@/lib/useDecisionStream";
 import type { AnalyzeResponse } from "@/lib/api";
 
-function decision(id: string): AnalyzeResponse {
+function decision(id: string, overrides: Partial<AnalyzeResponse> = {}): AnalyzeResponse {
   return {
     emailId: `email-${id}`,
     classificationId: id,
@@ -14,6 +14,7 @@ function decision(id: string): AnalyzeResponse {
     explanation: "Warned.",
     decidedAt: "2026-06-05T12:00:00Z",
     duplicate: false,
+    ...overrides,
   };
 }
 
@@ -43,7 +44,7 @@ describe("useDecisionStream", () => {
     );
 
     expect(result.current.status).toBe("connecting");
-    expect(result.current.decisions).toEqual([]);
+    expect(result.current.items).toEqual([]);
 
     act(() => {
       source.emit(decision("a"));
@@ -51,8 +52,30 @@ describe("useDecisionStream", () => {
     });
 
     await waitFor(() =>
-      expect(result.current.decisions.map((d) => d.classificationId)).toEqual(["b", "a"]),
+      expect(result.current.items.map((i) => i.decision.classificationId)).toEqual(["b", "a"]),
     );
+  });
+
+  it("flips a quarantine-pending card to its resolution in place, as one card", async () => {
+    let source!: FakeEventSource;
+    const factory = (url: string) => (source = new FakeEventSource(url)) as unknown as EventSource;
+
+    const { result } = renderHook(() =>
+      useDecisionStream({ url: "http://api.test/decisions/stream", eventSourceFactory: factory }),
+    );
+
+    act(() => {
+      source.emit(decision("p", { emailId: "uncertain", tier: "quarantine", routeUsed: "llm" }));
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    expect(result.current.items[0].resolved).toBe(false);
+
+    act(() => {
+      source.emit(decision("r", { emailId: "uncertain", tier: "allow", routeUsed: "llm" }));
+    });
+    await waitFor(() => expect(result.current.items[0].decision.tier).toBe("allow"));
+    expect(result.current.items).toHaveLength(1);
+    expect(result.current.items[0].resolved).toBe(true);
   });
 
   it("closes the stream on unmount", () => {
