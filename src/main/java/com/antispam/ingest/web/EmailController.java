@@ -5,8 +5,11 @@ import com.antispam.ingest.IngestResult;
 import com.antispam.ingest.IngestService;
 import com.antispam.privacy.crypto.ErasureOutcome;
 import com.antispam.privacy.crypto.ErasureService;
+import com.antispam.privacy.reveal.RevealAccessService;
+import com.antispam.privacy.reveal.RevealAccessType;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -38,11 +41,16 @@ public class EmailController {
 
     private final IngestService ingestService;
     private final ErasureService erasureService;
+    private final RevealAccessService revealAccess;
 
     @Autowired
-    public EmailController(IngestService ingestService, ErasureService erasureService) {
+    public EmailController(
+            IngestService ingestService,
+            ErasureService erasureService,
+            RevealAccessService revealAccess) {
         this.ingestService = ingestService;
         this.erasureService = erasureService;
+        this.revealAccess = revealAccess;
     }
 
     @PostMapping(
@@ -62,40 +70,68 @@ public class EmailController {
 
     /**
      * Returns the email, redacted by default (sender/recipients masked, raw body
-     * omitted). Pass {@code ?reveal=true} for the full unredacted record — a
-     * privileged view that must be access-controlled once authz is in place.
+     * omitted) — no authorization needed for the masked view. Pass {@code ?reveal=true}
+     * for the full unredacted record: that is privileged and access-controlled (story
+     * 14.05) — it requires a valid {@code Authorization: Bearer <secret>} and every such
+     * access is audited (who revealed which email).
      */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<EmailResponse> get(
             @PathVariable("id") UUID id,
-            @RequestParam(name = "reveal", defaultValue = "false") boolean reveal) {
-        return ingestService.findById(id)
-                .map(email -> ResponseEntity.ok(EmailResponse.from(email, reveal)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+            @RequestParam(name = "reveal", defaultValue = "false") boolean reveal,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Reveal-Actor", required = false) String actorHeader) {
+        // The masked default is open; only the unredacted reveal is gated and audited.
+        String actor = reveal ? revealAccess.authorize(authorization, actorHeader) : null;
+        Optional<Email> found = ingestService.findById(id);
+        if (found.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        if (reveal) {
+            revealAccess.record(id, actor, RevealAccessType.REVEAL);
+        }
+        return ResponseEntity.ok(EmailResponse.from(found.get(), reveal));
     }
 
     /**
-     * Returns the raw message bytes verbatim. This is a privileged, unredacted
-     * accessor (the byte-faithful canonical content) and must be gated by authz
-     * once it exists. A crypto-shredded record (story 14.02) has no recoverable
-     * body, so it returns 410 Gone rather than bytes.
+     * Returns the raw message bytes verbatim — a privileged, unredacted accessor gated
+     * by authz (story 14.05): it requires a valid bearer secret and is audited. A
+     * crypto-shredded record (story 14.02) has no recoverable body, so it returns 410
+     * Gone rather than bytes.
      */
     @GetMapping(value = "/{id}/raw", produces = "message/rfc822")
-    public ResponseEntity<byte[]> getRaw(@PathVariable("id") UUID id) {
-        return ingestService.findById(id)
-                .map(EmailController::rawBytes)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+    public ResponseEntity<byte[]> getRaw(
+            @PathVariable("id") UUID id,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Reveal-Actor", required = false) String actorHeader) {
+        String actor = revealAccess.authorize(authorization, actorHeader);
+        Optional<Email> found = ingestService.findById(id);
+        if (found.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        revealAccess.record(id, actor, RevealAccessType.RAW);
+        return rawBytes(found.get());
     }
 
     /**
      * Erases an email's body by crypto-shredding (story 14.02): its data key is
      * destroyed, leaving the immutable row intact but the content unrecoverable —
      * an Art. 17 right-to-erasure path that does not mutate the canonical record.
-     * Privileged, like the reveal/raw accessors; authz lands in story 14.05.
+     * Privileged and access-controlled (story 14.05): requires a valid bearer secret,
+     * and a performed erasure is audited.
      */
     @PostMapping(value = "/{id}/erasure", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<EmailErasureResponse> erase(@PathVariable("id") UUID id) {
+    public ResponseEntity<EmailErasureResponse> erase(
+            @PathVariable("id") UUID id,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Reveal-Actor", required = false) String actorHeader) {
+        String actor = revealAccess.authorize(authorization, actorHeader);
         ErasureOutcome outcome = erasureService.erase(id);
+        if (outcome != ErasureOutcome.NOT_FOUND) {
+            // The email existed and we acted on it (erased / already-erased / unencrypted) —
+            // record the privileged action. A 404 leaves no audit (nothing was acted on).
+            revealAccess.record(id, actor, RevealAccessType.ERASURE);
+        }
         EmailErasureResponse body = new EmailErasureResponse(id, outcome);
         return switch (outcome) {
             case ERASED, ALREADY_ERASED -> ResponseEntity.ok(body);

@@ -75,8 +75,8 @@ Erasure covers the body. Address/subject metadata is minimized at egress (masked
 default, 14.01) rather than crypto-shredded, since those columns live in the immutable row
 and are also load-bearing lookup keys (e.g. sender reputation).
 
-> The erasure and reveal/raw accessors are **privileged**; server-side authorization for
-> them lands in story 14.05.
+> The erasure and reveal/raw accessors are **privileged** and access-controlled
+> server-side (story 14.05, below).
 
 ## Master-key rotation
 
@@ -139,6 +139,28 @@ controlled canonical store — so they are de-identified at the export boundary:
 The HMAC key comes only from the environment (`ANTISPAM_PRIVACY_EXPORT_PSEUDONYM_KEY`); with
 no key set the export still de-identifies, but with a process-stable random key (consistent
 within a run, not across restarts). A real deploy sets the key for cross-run lineage stability.
+
+## Console redaction + access-controlled reveal (story 14.05)
+
+The lab console shows masked data by default and never has a path to unmasked PII:
+
+- The **living stream** renders decisions (`AnalyzeResponse`) that carry no sender,
+  recipients, or body — only the email id and classification.
+- The **sample picker / story panel** receives only the sender *domain* (no local-part)
+  and subject; it never fetches a raw body or a reveal view.
+- The thunderclap demo (Epic 12) therefore runs end-to-end with masked data and no raw
+  PII on screen.
+
+The redaction-bypassing accessors are enforced **server-side**, not just hidden in the UI:
+
+- `GET /emails/{id}?reveal=true`, `GET /emails/{id}/raw`, and `POST /emails/{id}/erasure`
+  require `Authorization: Bearer <secret>` (`ANTISPAM_PRIVACY_REVEAL_SECRET`). Missing
+  credentials → **401**, a wrong token → **403**, and — **fail closed** — an unconfigured
+  secret denies everyone.
+- Every authorized access is **audited** in `reveal_access_audit`: who (the bearer's
+  actor, optionally named via `X-Reveal-Actor`), which email, the access type
+  (`reveal`/`raw`/`erasure`), and when. So every unmasked access is attributable.
+- The masked default read (`GET /emails/{id}`) needs no authorization and is unaffected.
 
 ## Standards referenced
 

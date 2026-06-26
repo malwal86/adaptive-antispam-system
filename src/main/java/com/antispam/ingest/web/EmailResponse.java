@@ -14,9 +14,9 @@ import java.util.UUID;
  * <p><b>Redacted by default:</b> the sender and recipients have their local-parts
  * masked and the raw content is omitted, so casual reads do not expose PII. The
  * full, byte-faithful view is opt-in via {@code from(email, reveal=true)} (the
- * controller's {@code ?reveal=true}) and must be access-controlled once authz
- * exists. The domain is always kept — it is the reputation key, not sensitive on
- * its own.
+ * controller's {@code ?reveal=true}), which is access-controlled server-side and
+ * audited (story 14.05). The domain is always kept — it is the reputation key, not
+ * sensitive on its own.
  *
  * <p>Null fields are omitted from the JSON ({@code @JsonInclude(NON_NULL)}), so a
  * redacted response simply has no {@code rawBase64} key.
