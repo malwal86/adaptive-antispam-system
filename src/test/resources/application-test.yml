@@ -51,6 +51,12 @@ app:
 # Hard-rule fixtures pinned for the integration tests, so they don't ride on the
 # editable demo defaults in the main application.yml.
 antispam:
+  # A known reveal secret so the full-context tests can exercise the privileged
+  # reveal/raw/erasure accessors (story 14.05). Production sets its own via
+  # ANTISPAM_PRIVACY_REVEAL_SECRET; with no secret the accessors fail closed.
+  privacy:
+    reveal:
+      secret: test-reveal-secret
   hard-rules:
     url-denylist:
       - malware.example

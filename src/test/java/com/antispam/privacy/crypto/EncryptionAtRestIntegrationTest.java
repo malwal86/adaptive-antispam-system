@@ -38,6 +38,9 @@ import org.springframework.test.web.servlet.MvcResult;
 })
 class EncryptionAtRestIntegrationTest extends AbstractPostgresIntegrationTest {
 
+    /** The reveal secret from application-test.yml; required for reveal/raw/erasure (14.05). */
+    private static final String REVEAL_AUTH = "Bearer test-reveal-secret";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -82,12 +85,12 @@ class EncryptionAtRestIntegrationTest extends AbstractPostgresIntegrationTest {
                 .andExpect(jsonPath("$.rawBase64").doesNotExist())
                 .andExpect(jsonPath("$.sender").value(org.hamcrest.Matchers.startsWith("a***@")));
 
-        mockMvc.perform(get("/emails/{id}", id).param("reveal", "true"))
+        mockMvc.perform(get("/emails/{id}", id).param("reveal", "true").header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.rawBase64")
                         .value(java.util.Base64.getEncoder().encodeToString(raw)));
 
-        byte[] fetched = mockMvc.perform(get("/emails/{id}/raw", id))
+        byte[] fetched = mockMvc.perform(get("/emails/{id}/raw", id).header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
         assertThat(fetched).isEqualTo(raw);
@@ -98,7 +101,7 @@ class EncryptionAtRestIntegrationTest extends AbstractPostgresIntegrationTest {
         byte[] raw = uniqueEmail("erase");
         UUID id = ingest(raw);
 
-        mockMvc.perform(post("/emails/{id}/erasure", id))
+        mockMvc.perform(post("/emails/{id}/erasure", id).header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("ERASED"));
 
@@ -114,12 +117,12 @@ class EncryptionAtRestIntegrationTest extends AbstractPostgresIntegrationTest {
         Email loaded = emails.findById(id).orElseThrow();
         assertThat(loaded.contentErased()).isTrue();
 
-        mockMvc.perform(get("/emails/{id}", id).param("reveal", "true"))
+        mockMvc.perform(get("/emails/{id}", id).param("reveal", "true").header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contentErased").value(true))
                 .andExpect(jsonPath("$.rawBase64").doesNotExist());
 
-        mockMvc.perform(get("/emails/{id}/raw", id))
+        mockMvc.perform(get("/emails/{id}/raw", id).header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isGone());
     }
 
@@ -127,23 +130,24 @@ class EncryptionAtRestIntegrationTest extends AbstractPostgresIntegrationTest {
     void erasing_an_already_erased_email_is_idempotent() throws Exception {
         UUID id = ingest(uniqueEmail("twice"));
 
-        mockMvc.perform(post("/emails/{id}/erasure", id))
+        mockMvc.perform(post("/emails/{id}/erasure", id).header("Authorization", REVEAL_AUTH))
                 .andExpect(jsonPath("$.outcome").value("ERASED"));
-        mockMvc.perform(post("/emails/{id}/erasure", id))
+        mockMvc.perform(post("/emails/{id}/erasure", id).header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("ALREADY_ERASED"));
     }
 
     @Test
     void erasing_an_unknown_email_returns_404() throws Exception {
-        mockMvc.perform(post("/emails/{id}/erasure", UUID.randomUUID()))
+        mockMvc.perform(post("/emails/{id}/erasure", UUID.randomUUID()).header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void the_emails_row_remains_immutable_after_erasure() throws Exception {
         UUID id = ingest(uniqueEmail("immutable"));
-        mockMvc.perform(post("/emails/{id}/erasure", id)).andExpect(status().isOk());
+        mockMvc.perform(post("/emails/{id}/erasure", id).header("Authorization", REVEAL_AUTH))
+                .andExpect(status().isOk());
 
         // The crypto-shred lives entirely in the key store; the canonical row itself
         // is still write-protected by the V1 immutability trigger.

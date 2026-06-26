@@ -29,6 +29,9 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class EmailIngestApiTest extends AbstractPostgresIntegrationTest {
 
+    /** The reveal secret set in application-test.yml; required for the privileged accessors (14.05). */
+    private static final String REVEAL_AUTH = "Bearer test-reveal-secret";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -65,14 +68,14 @@ class EmailIngestApiTest extends AbstractPostgresIntegrationTest {
                 .andExpect(jsonPath("$.authResults").value(org.hamcrest.Matchers.containsString("spf=pass")))
                 .andExpect(jsonPath("$.rawBase64").doesNotExist());
 
-        // Opt-in reveal returns the full, byte-faithful record.
-        mockMvc.perform(get("/emails/{id}", emailId).param("reveal", "true"))
+        // Opt-in reveal returns the full, byte-faithful record — gated by the bearer secret (14.05).
+        mockMvc.perform(get("/emails/{id}", emailId).param("reveal", "true").header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sender").value("newsletter@deals.example.net"))
                 .andExpect(jsonPath("$.rawBase64").value(Base64.getEncoder().encodeToString(raw)));
 
         // Raw view: byte-identical to what was posted.
-        byte[] fetchedRaw = mockMvc.perform(get("/emails/{id}/raw", emailId))
+        byte[] fetchedRaw = mockMvc.perform(get("/emails/{id}/raw", emailId).header("Authorization", REVEAL_AUTH))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
         assertThat(fetchedRaw).isEqualTo(raw);

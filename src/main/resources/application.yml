@@ -255,6 +255,15 @@ antispam:
   privacy:
     export:
       pseudonym-key: ${ANTISPAM_PRIVACY_EXPORT_PSEUDONYM_KEY:}
+    # Access control for the privileged, redaction-bypassing accessors (story 14.05):
+    # GET /emails/{id}?reveal=true, GET /emails/{id}/raw, and POST /emails/{id}/erasure.
+    # A caller must present Authorization: Bearer <this secret>; every authorized access is
+    # audited (who/which email/when). FAIL CLOSED: a blank secret denies all privileged
+    # access (there is no acceptable credential), so forgetting to set it cannot expose PII —
+    # the masked default reads are unaffected. Set in the env, never the repo:
+    #   ANTISPAM_PRIVACY_REVEAL_SECRET=<a strong shared secret>
+    reveal:
+      secret: ${ANTISPAM_PRIVACY_REVEAL_SECRET:}
   # Beta-reputation parameters (stories 03.01, 03.02). reputation =
   # (good+alpha)/(good+bad+alpha+beta); alpha/beta are pseudo-counts of prior good/bad
   # observations. 1/1 is a uniform prior, so a brand-new sender starts at mean 0.5 with
