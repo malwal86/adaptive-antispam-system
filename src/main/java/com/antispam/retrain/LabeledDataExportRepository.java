@@ -1,5 +1,6 @@
 package com.antispam.retrain;
 
+import com.antispam.event.SenderKey;
 import com.antispam.seed.GroundTruthLabel;
 import java.util.List;
 import java.util.UUID;
@@ -43,9 +44,12 @@ public class LabeledDataExportRepository {
                    g.label                                               as label,
                    %s                                                    as weight,
                    'seed'                                                as source,
-                   json_build_object('datasetSource', g.dataset_source)::text as provenance
+                   json_build_object('datasetSource', g.dataset_source)::text as provenance,
+                   e.sender                                              as sender,
+                   e.sender_domain                                       as sender_domain
             from ground_truth_labels g
             join eval_split_assignments a on a.email_id = g.email_id
+            join emails e on e.id = g.email_id
             where a.split_side = 'train'
             order by g.email_id
             """.formatted(SEED_LABEL_WEIGHT);
@@ -54,22 +58,27 @@ public class LabeledDataExportRepository {
     // left join + "split_side is distinct from 'eval'" keeps unassigned rows (the common case — these
     // are never in eval) while dropping any whose email landed on the golden side.
     private static final String RETRAIN_SQL = """
-            select r.email_id   as email_id,
-                   r.label      as label,
-                   r.weight     as weight,
-                   r.source     as source,
-                   r.provenance as provenance
+            select r.email_id      as email_id,
+                   r.label         as label,
+                   r.weight        as weight,
+                   r.source        as source,
+                   r.provenance    as provenance,
+                   e.sender        as sender,
+                   e.sender_domain as sender_domain
             from retrain_labels r
+            join emails e on e.id = r.email_id
             left join eval_split_assignments a on a.email_id = r.email_id
             where a.split_side is distinct from 'eval'
             order by r.source, r.email_id, r.id
             """;
 
     private final JdbcTemplate jdbc;
+    private final ExportDeidentifier deidentifier;
 
     @Autowired
-    public LabeledDataExportRepository(JdbcTemplate jdbc) {
+    public LabeledDataExportRepository(JdbcTemplate jdbc, ExportDeidentifier deidentifier) {
         this.jdbc = jdbc;
+        this.deidentifier = deidentifier;
     }
 
     /** The train-side seed labels, oldest-id first, each stamped with {@code featureVersion}. */
@@ -82,13 +91,22 @@ public class LabeledDataExportRepository {
         return jdbc.query(RETRAIN_SQL, mapper(featureVersion));
     }
 
-    private static RowMapper<TrainingExample> mapper(int featureVersion) {
-        return (rs, rowNum) -> new TrainingExample(
-                rs.getObject("email_id", UUID.class),
-                GroundTruthLabel.fromDbValue(rs.getString("label")),
-                rs.getDouble("weight"),
-                rs.getString("source"),
-                rs.getString("provenance"),
-                featureVersion);
+    /**
+     * Maps a row to a de-identified example (story 14.04): the sender is read only to derive its
+     * stable pseudonym — it never lands in the {@link TrainingExample} — and the provenance is
+     * sanitized before it leaves the store.
+     */
+    private RowMapper<TrainingExample> mapper(int featureVersion) {
+        return (rs, rowNum) -> {
+            String senderKey = SenderKey.of(rs.getString("sender"), rs.getString("sender_domain"));
+            return new TrainingExample(
+                    rs.getObject("email_id", UUID.class),
+                    GroundTruthLabel.fromDbValue(rs.getString("label")),
+                    rs.getDouble("weight"),
+                    rs.getString("source"),
+                    deidentifier.sanitizeProvenance(rs.getString("provenance")),
+                    featureVersion,
+                    deidentifier.pseudonymFor(senderKey));
+        };
     }
 }

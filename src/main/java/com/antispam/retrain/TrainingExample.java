@@ -18,12 +18,20 @@ import java.util.UUID;
  * known feature contract. Examples on the golden eval side are never exported (no leakage — the export
  * filters them out, coordinated with Epic 11's grouped/time-forward split).
  *
+ * <p><b>De-identified for export (story 14.04).</b> The example carries a
+ * {@code senderPseudonym} — a stable keyed-HMAC of the sender identity — instead of the real
+ * sender, so a copied training artifact never exposes who sent the mail while same-sender rows
+ * still group together for grouped/time-forward splits. The {@code provenance} is likewise
+ * sanitized at the export boundary (sender pseudonymized, stray addresses masked), and raw
+ * bodies are not exported at all.
+ *
  * @param emailId        the labeled email (a seed email, a decided email, or an arena variant's email)
  * @param label          the training label — the email's class
  * @param weight         how much this example counts in training; {@code > 0}
  * @param source         where the label came from: {@code seed}, {@code feedback}, or {@code arena}
- * @param provenance     the per-example audit trail as a JSON-object string (opaque, passed through)
+ * @param provenance     the per-example audit trail as a JSON-object string, de-identified for export
  * @param featureVersion the feature schema version this example is tied to; {@code > 0}
+ * @param senderPseudonym the keyed-HMAC pseudonym of the sender (stable per sender); never blank
  */
 public record TrainingExample(
         UUID emailId,
@@ -31,7 +39,8 @@ public record TrainingExample(
         double weight,
         String source,
         String provenance,
-        int featureVersion) {
+        int featureVersion,
+        String senderPseudonym) {
 
     public TrainingExample {
         if (emailId == null) {
@@ -51,6 +60,9 @@ public record TrainingExample(
         }
         if (featureVersion <= 0) {
             throw new IllegalArgumentException("featureVersion must be positive but was " + featureVersion);
+        }
+        if (senderPseudonym == null || senderPseudonym.isBlank()) {
+            throw new IllegalArgumentException("senderPseudonym must not be blank");
         }
     }
 }

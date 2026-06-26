@@ -55,6 +55,6 @@ class LabeledDataExportServiceTest {
 
     private static TrainingExample example(String source, double weight, int featureVersion) {
         return new TrainingExample(UUID.randomUUID(), GroundTruthLabel.SPAM, weight, source,
-                "{\"source\":\"" + source + "\"}", featureVersion);
+                "{\"source\":\"" + source + "\"}", featureVersion, "snd_" + source);
     }
 }
