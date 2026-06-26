@@ -244,6 +244,17 @@ antispam:
   encryption:
     keys: {}
     active-key-version: ${ANTISPAM_ENCRYPTION_ACTIVE_KEY_VERSION:}
+  # Labeled-data export de-identification (story 14.04). Exports get copied to CI and Supabase
+  # Storage — outside the canonical store — so the sender identity is pseudonymized with a keyed
+  # HMAC (stable per sender, so grouped/time-forward splits and reputation lineage still work),
+  # and provenance is sanitized. The HMAC key comes ONLY from the environment/secret manager:
+  #   ANTISPAM_PRIVACY_EXPORT_PSEUDONYM_KEY=<base64 HMAC key>
+  # Blank by default: the export still de-identifies, but with a process-stable random key, so
+  # pseudonyms are consistent within a run but not across restarts. A real deploy sets the key so
+  # the pseudonym stays stable over time. See docs/data-protection.md.
+  privacy:
+    export:
+      pseudonym-key: ${ANTISPAM_PRIVACY_EXPORT_PSEUDONYM_KEY:}
   # Beta-reputation parameters (stories 03.01, 03.02). reputation =
   # (good+alpha)/(good+bad+alpha+beta); alpha/beta are pseudo-counts of prior good/bad
   # observations. 1/1 is a uniform prior, so a brand-new sender starts at mean 0.5 with

@@ -118,6 +118,28 @@ data-handling terms — **no-training on submitted data** and **retention window
 the masking level accordingly. Masking is the technical control; the DPA is the contractual
 one, and both apply.
 
+## Pseudonymized labeled-data export (story 14.04)
+
+Retrain/eval exports (story 10.01) are copied to CI and Supabase Storage — outside the
+controlled canonical store — so they are de-identified at the export boundary:
+
+- **Sender identity → keyed-HMAC pseudonym** (`snd_…`). The same sender always maps to the
+  same pseudonym, so grouped and time-forward splits and reputation lineage (Epic 11) keep
+  working, but the export never carries who the sender is. HMAC (not a plain hash) so the
+  pseudonym can't be reversed with an address dictionary.
+- **Provenance sanitized** — a `senderKey`/`sender` field is replaced with that same
+  pseudonym (so grouping by the embedded value still works); any stray address elsewhere is
+  masked.
+- **Raw bodies are not exported** at all (the export is `emailId` + label + weight +
+  pseudonym + sanitized provenance).
+- **Manifest** — each export carries a manifest recording the de-identification applied
+  (`keyed HMAC-SHA-256`, direct identifiers masked, no raw bodies) and the feature/label
+  versions, so a copied artifact documents its own posture.
+
+The HMAC key comes only from the environment (`ANTISPAM_PRIVACY_EXPORT_PSEUDONYM_KEY`); with
+no key set the export still de-identifies, but with a process-stable random key (consistent
+within a run, not across restarts). A real deploy sets the key for cross-run lineage stability.
+
 ## Standards referenced
 
 - **GDPR** Recital 49 (anti-spam as legitimate interest), Art. 17 (right to erasure).

@@ -42,7 +42,8 @@ public class LabeledDataExportService {
         List<TrainingExample> examples = new ArrayList<>();
         examples.addAll(repository.exportSeedLabels(featureVersion));
         examples.addAll(repository.exportFeedbackAndArenaLabels(featureVersion));
-        log.info("labeled-data export: {} examples at featureVersion={}", examples.size(), featureVersion);
-        return new TrainingExport(featureVersion, examples);
+        log.info("labeled-data export: {} examples at featureVersion={} (de-identified)",
+                examples.size(), featureVersion);
+        return new TrainingExport(featureVersion, ExportManifest.standard(featureVersion), examples);
     }
 }

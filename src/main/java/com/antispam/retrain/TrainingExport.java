@@ -9,9 +9,10 @@ import java.util.List;
  * no wall clock, no RNG) — so a retrain run is reproducible from a fixed snapshot and runnable from CI.
  *
  * @param featureVersion the feature schema version every example is tied to
+ * @param manifest       the de-identification manifest (story 14.04): what was applied + versions
  * @param examples       the training examples, in a stable order (seed first, then feedback/arena)
  */
-public record TrainingExport(int featureVersion, List<TrainingExample> examples) {
+public record TrainingExport(int featureVersion, ExportManifest manifest, List<TrainingExample> examples) {
 
     public TrainingExport {
         examples = List.copyOf(examples);

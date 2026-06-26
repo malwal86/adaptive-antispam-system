@@ -101,6 +101,43 @@ class LabeledDataExportIntegrationTest extends AbstractPostgresIntegrationTest {
     }
 
     @Test
+    void de_identifies_senders_to_a_stable_pseudonym_with_no_raw_identifiers_in_the_artifact() {
+        // Two labels from the SAME sender, plus one from a different sender. The feedback gate
+        // writes the real senderKey into provenance — exactly the identifier the export must scrub.
+        UUID first = ingestFrom("alice@example.com", "deid-a1");
+        UUID second = ingestFrom("alice@example.com", "deid-a2");
+        UUID other = ingestFrom("bob@elsewhere.example", "deid-b1");
+        retrainLabels.saveAll(List.of(
+                new RetrainLabel(UUID.randomUUID(), first, GroundTruthLabel.SPAM, 0.7, "feedback",
+                        "{\"senderKey\":\"alice@example.com\"}"),
+                new RetrainLabel(UUID.randomUUID(), second, GroundTruthLabel.SPAM, 0.7, "feedback",
+                        "{\"senderKey\":\"alice@example.com\"}"),
+                new RetrainLabel(UUID.randomUUID(), other, GroundTruthLabel.SPAM, 0.7, "feedback",
+                        "{\"senderKey\":\"bob@elsewhere.example\"}")));
+
+        List<TrainingExample> mine = service.export().examples().stream()
+                .filter(e -> Set.of(first, second, other).contains(e.emailId()))
+                .toList();
+
+        // No raw direct identifier survives anywhere in the exported rows (success metric).
+        assertThat(mine).allSatisfy(e -> {
+            assertThat(e.senderPseudonym()).startsWith("snd_");
+            assertThat(e.senderPseudonym() + e.provenance())
+                    .doesNotContain("alice@example.com")
+                    .doesNotContain("bob@elsewhere.example");
+        });
+
+        // Grouping integrity: same-sender rows share a pseudonym; a different sender differs.
+        String aliceFirst = byEmail(mine, first).senderPseudonym();
+        String aliceSecond = byEmail(mine, second).senderPseudonym();
+        String bob = byEmail(mine, other).senderPseudonym();
+        assertThat(aliceFirst).isEqualTo(aliceSecond).isNotEqualTo(bob);
+
+        // The pseudonym written into provenance matches the one the export groups by.
+        assertThat(byEmail(mine, first).provenance()).contains(aliceFirst);
+    }
+
+    @Test
     void reproduces_deterministically_from_the_same_snapshot() {
         UUID seed = ingest("det-seed");
         groundTruth.saveIfAbsent(seed, GroundTruthLabel.SPAM, "spamassassin");
@@ -128,7 +165,11 @@ class LabeledDataExportIntegrationTest extends AbstractPostgresIntegrationTest {
     }
 
     private UUID ingest(String tag) {
-        byte[] raw = ("From: s@" + tag + ".test\nSubject: " + tag + "\n\nbody " + tag + "\n")
+        return ingestFrom("s@" + tag + ".test", tag);
+    }
+
+    private UUID ingestFrom(String sender, String tag) {
+        byte[] raw = ("From: " + sender + "\nSubject: " + tag + "\n\nbody " + tag + "\n")
                 .getBytes(StandardCharsets.UTF_8);
         IngestResult ingested = ingestService.ingestOffSpine(raw, "seed");
         return ingested.emailId();
