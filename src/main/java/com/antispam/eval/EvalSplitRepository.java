@@ -1,7 +1,7 @@
 package com.antispam.eval;
 
+import com.antispam.common.JdbcTimestamps;
 import com.antispam.seed.GroundTruthLabel;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -123,8 +123,6 @@ public class EvalSplitRepository {
         if (!rs.next()) {
             return new SplitAudit(0, 0, 0, 0, 0, 0, null, null);
         }
-        OffsetDateTime latestTrain = rs.getObject("latest_train_time", OffsetDateTime.class);
-        OffsetDateTime earliestEval = rs.getObject("earliest_eval_time", OffsetDateTime.class);
         return new SplitAudit(
                 rs.getInt("total"),
                 rs.getInt("train_count"),
@@ -132,8 +130,8 @@ public class EvalSplitRepository {
                 rs.getInt("group_count"),
                 rs.getInt("cross_boundary"),
                 rs.getInt("temporal_inversions"),
-                latestTrain == null ? null : latestTrain.toInstant(),
-                earliestEval == null ? null : earliestEval.toInstant());
+                JdbcTimestamps.instantOrNull(rs, "latest_train_time"),
+                JdbcTimestamps.instantOrNull(rs, "earliest_eval_time"));
     };
 
     /** Per-(side, class) counts of the stored split, for surfacing class balance. */

@@ -15,6 +15,7 @@ import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
@@ -115,13 +116,9 @@ public class EmailFeatureExtractor {
         if (!isPresent(recipients)) {
             return 0;
         }
-        int count = 0;
-        for (String part : recipients.split(",")) {
-            if (isPresent(part)) {
-                count++;
-            }
-        }
-        return count;
+        return (int) Arrays.stream(recipients.split(","))
+                .filter(EmailFeatureExtractor::isPresent)
+                .count();
     }
 
     private static boolean replyToDiffers(String sender, String replyTo) {
@@ -209,10 +206,7 @@ public class EmailFeatureExtractor {
         String trimmed = text.strip();
         String[] words = trimmed.isEmpty() ? new String[0] : trimmed.split("\\s+");
 
-        int wordCharTotal = 0;
-        for (String w : words) {
-            wordCharTotal += w.length();
-        }
+        int wordCharTotal = Arrays.stream(words).mapToInt(String::length).sum();
         double avgWordLength = words.length == 0 ? 0.0 : round6((double) wordCharTotal / words.length);
 
         return new TextFeatures(
