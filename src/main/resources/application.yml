@@ -368,6 +368,15 @@ antispam:
     cost:
       input-per-1k-tokens: 0.00015
       output-per-1k-tokens: 0.00060
+    # PII masking before LLM egress (story 14.03). The prompt's untrusted email block is
+    # scrubbed of direct identifiers (addresses, phones, card/account numbers) before it
+    # leaves our boundary for the third-party model, while URLs, brand mentions, and urgency
+    # language are preserved so decision quality is unaffected. STRICT by default — the safe
+    # choice for a public provider API; set ANTISPAM_LLM_PII_MASKING_LEVEL=OFF only for a
+    # provider whose data-handling agreement (no-training, retention) makes masking
+    # unnecessary. See docs/data-protection.md.
+    pii-masking:
+      level: ${ANTISPAM_LLM_PII_MASKING_LEVEL:STRICT}
     # Rolling budget cap (story 05.04). LLM spend is tracked in atomic Redis counters — one per
     # UTC day, one per UTC month — and every call reserves against both before it runs, so a
     # bad/adversarial day can't burn the month and cost is bounded by design (PRD §Cost). Off by
