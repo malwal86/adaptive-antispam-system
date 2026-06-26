@@ -1,5 +1,6 @@
 package com.antispam.experiment.replay;
 
+import com.antispam.common.JdbcArrays;
 import com.antispam.common.JdbcParams;
 import com.antispam.common.JdbcTimestamps;
 import com.antispam.decision.Decision;
@@ -7,8 +8,6 @@ import com.antispam.decision.ReasonCode;
 import com.antispam.decision.RouteUsed;
 import com.antispam.decision.policy.ScoredDecision;
 import com.antispam.decision.routing.RoutingReason;
-import java.sql.Array;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -173,9 +172,9 @@ public class ReplayDecisionRepository {
         Double boxedPosterior = rs.wasNull() ? null : posterior;
         ScoredDecision scored = new ScoredDecision(
                 Decision.valueOf(rs.getString("decision")),
-                names(rs.getArray("reason_codes"), ReasonCode::valueOf),
+                JdbcArrays.mapElements(rs.getArray("reason_codes"), ReasonCode::valueOf),
                 RouteUsed.valueOf(rs.getString("route_used")),
-                names(rs.getArray("routing_reasons"), RoutingReason::valueOf),
+                JdbcArrays.mapElements(rs.getArray("routing_reasons"), RoutingReason::valueOf),
                 rs.getString("policy_version"),
                 boxedPosterior);
         return new ReplayDecision(
@@ -193,13 +192,4 @@ public class ReplayDecisionRepository {
                     RouteUsed.valueOf(rs.getString("route_used")),
                     rs.getString("policy_version"),
                     com.antispam.seed.GroundTruthLabel.fromDbValue(rs.getString("label")));
-
-    private static <E> List<E> names(Array array, java.util.function.Function<String, E> parse)
-            throws java.sql.SQLException {
-        if (array == null) {
-            return List.of();
-        }
-        String[] names = (String[]) array.getArray();
-        return Arrays.stream(names).map(parse).toList();
-    }
 }

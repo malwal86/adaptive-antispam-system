@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -190,18 +191,13 @@ public class BypassMeasurementService {
     }
 
     private static Double firstRate(List<BypassTrendPoint> points) {
-        return points.stream().map(BypassTrendPoint::bypassRate).filter(r -> r != null).findFirst()
+        return points.stream().map(BypassTrendPoint::bypassRate).filter(Objects::nonNull).findFirst()
                 .orElse(null);
     }
 
     private static Double latestRate(List<BypassTrendPoint> points) {
-        Double latest = null;
-        for (BypassTrendPoint point : points) {
-            if (point.bypassRate() != null) {
-                latest = point.bypassRate();
-            }
-        }
-        return latest;
+        return points.stream().map(BypassTrendPoint::bypassRate).filter(Objects::nonNull)
+                .reduce((first, second) -> second).orElse(null);
     }
 
     /** Why a variant entered the corpus — a Track A bypass or a Track B false positive. */

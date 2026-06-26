@@ -1,11 +1,10 @@
 package com.antispam.decision;
 
+import com.antispam.common.JdbcArrays;
 import com.antispam.common.JdbcTimestamps;
 import com.antispam.experiment.ExperimentContext;
 import java.math.BigDecimal;
-import java.sql.Array;
 import java.time.OffsetDateTime;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -128,7 +127,7 @@ public class ClassificationRepository {
             rs.getObject("id", UUID.class),
             rs.getObject("email_id", UUID.class),
             Decision.valueOf(rs.getString("decision")),
-            reasonCodes(rs.getArray("reason_codes")),
+            JdbcArrays.mapElements(rs.getArray("reason_codes"), ReasonCode::valueOf),
             RouteUsed.valueOf(rs.getString("route_used")),
             rs.getLong("latency_ms"),
             modelScores(rs),
@@ -169,13 +168,5 @@ public class ClassificationRepository {
         }
         return new FusedScore(
                 posterior, LogOddsFusion.logit(posterior), rs.getDouble("uncertainty_band"), 0.0);
-    }
-
-    private static List<ReasonCode> reasonCodes(Array array) throws java.sql.SQLException {
-        if (array == null) {
-            return List.of();
-        }
-        String[] names = (String[]) array.getArray();
-        return Arrays.stream(names).map(ReasonCode::valueOf).toList();
     }
 }
