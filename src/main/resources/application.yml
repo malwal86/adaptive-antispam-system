@@ -228,6 +228,22 @@ antispam:
   console:
     allowed-origins:
       - http://localhost:3000
+  # Encryption at rest + crypto-shredding (story 14.02). Email bodies are stored as
+  # ciphertext under a per-record data key, itself wrapped by a master key; honoring a
+  # right-to-erasure request destroys that data key (crypto-shred), leaving the immutable
+  # emails row intact but its content unrecoverable. Master keys are base64-encoded AES
+  # keys supplied ONLY through the environment/secret manager, never the repo:
+  #   ANTISPAM_ENCRYPTION_ACTIVE_KEY_VERSION=v1
+  #   ANTISPAM_ENCRYPTION_KEYS_V1=<base64 32-byte key>
+  # Deliberately empty by default (like app.supabase): with no key configured the cipher
+  # is disabled and bodies are stored as today's plaintext, so local dev, the test profile,
+  # and a keyless deploy all boot unchanged. Encryption (and crypto-shred erasure) engage
+  # only once a key + active version are set — which the hosted deploy does. Rotation is
+  # additive: add keys.v2, set active-key-version=v2, keep keys.v1 until KeyRotationService
+  # has re-wrapped every record under v2 (see docs/data-protection.md).
+  encryption:
+    keys: {}
+    active-key-version: ${ANTISPAM_ENCRYPTION_ACTIVE_KEY_VERSION:}
   # Beta-reputation parameters (stories 03.01, 03.02). reputation =
   # (good+alpha)/(good+bad+alpha+beta); alpha/beta are pseudo-counts of prior good/bad
   # observations. 1/1 is a uniform prior, so a brand-new sender starts at mean 0.5 with

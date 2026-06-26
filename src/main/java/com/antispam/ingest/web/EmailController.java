@@ -3,10 +3,13 @@ package com.antispam.ingest.web;
 import com.antispam.ingest.Email;
 import com.antispam.ingest.IngestResult;
 import com.antispam.ingest.IngestService;
+import com.antispam.privacy.crypto.ErasureOutcome;
+import com.antispam.privacy.crypto.ErasureService;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,10 +37,12 @@ public class EmailController {
     private static final MediaType MESSAGE_RFC822 = MediaType.parseMediaType("message/rfc822");
 
     private final IngestService ingestService;
+    private final ErasureService erasureService;
 
     @Autowired
-    public EmailController(IngestService ingestService) {
+    public EmailController(IngestService ingestService, ErasureService erasureService) {
         this.ingestService = ingestService;
+        this.erasureService = erasureService;
     }
 
     @PostMapping(
@@ -72,7 +77,8 @@ public class EmailController {
     /**
      * Returns the raw message bytes verbatim. This is a privileged, unredacted
      * accessor (the byte-faithful canonical content) and must be gated by authz
-     * once it exists.
+     * once it exists. A crypto-shredded record (story 14.02) has no recoverable
+     * body, so it returns 410 Gone rather than bytes.
      */
     @GetMapping(value = "/{id}/raw", produces = "message/rfc822")
     public ResponseEntity<byte[]> getRaw(@PathVariable("id") UUID id) {
@@ -81,7 +87,30 @@ public class EmailController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /**
+     * Erases an email's body by crypto-shredding (story 14.02): its data key is
+     * destroyed, leaving the immutable row intact but the content unrecoverable —
+     * an Art. 17 right-to-erasure path that does not mutate the canonical record.
+     * Privileged, like the reveal/raw accessors; authz lands in story 14.05.
+     */
+    @PostMapping(value = "/{id}/erasure", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<EmailErasureResponse> erase(@PathVariable("id") UUID id) {
+        ErasureOutcome outcome = erasureService.erase(id);
+        EmailErasureResponse body = new EmailErasureResponse(id, outcome);
+        return switch (outcome) {
+            case ERASED, ALREADY_ERASED -> ResponseEntity.ok(body);
+            case NOT_FOUND -> ResponseEntity.notFound().build();
+            // The email exists but was stored unencrypted, so there is no key to destroy:
+            // 409, said plainly, beats pretending the content was erased.
+            case NO_KEY -> ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        };
+    }
+
     private static ResponseEntity<byte[]> rawBytes(Email email) {
+        if (email.contentErased()) {
+            return ResponseEntity.status(HttpStatus.GONE)
+                    .body("content erased".getBytes(StandardCharsets.UTF_8));
+        }
         return ResponseEntity.ok().contentType(MESSAGE_RFC822).body(email.rawContent());
     }
 

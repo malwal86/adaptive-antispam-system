@@ -33,7 +33,8 @@ public record EmailResponse(
         String subject,
         Instant receivedAt,
         String authResults,
-        String rawBase64) {
+        String rawBase64,
+        Boolean contentErased) {
 
     /**
      * Builds the response.
@@ -43,6 +44,10 @@ public record EmailResponse(
      */
     public static EmailResponse from(Email email, boolean reveal) {
         var metadata = email.metadata();
+        // A crypto-shredded record (story 14.02) has no recoverable body: even an
+        // authorized reveal returns the "erased" state, never bytes. The metadata
+        // columns still exist and are masked/revealed as usual.
+        boolean erased = email.contentErased();
         return new EmailResponse(
                 email.id(),
                 HexFormat.of().formatHex(email.contentHash()),
@@ -54,6 +59,7 @@ public record EmailResponse(
                 metadata.subject(),
                 metadata.receivedAt(),
                 metadata.authResults(),
-                reveal ? Base64.getEncoder().encodeToString(email.rawContent()) : null);
+                (reveal && !erased) ? Base64.getEncoder().encodeToString(email.rawContent()) : null,
+                erased ? Boolean.TRUE : null);
     }
 }

@@ -21,4 +21,15 @@ public record Email(
         ParsedEmail metadata,
         String ingestSource,
         Instant ingestedAt) {
+
+    /**
+     * Whether this email's body has been crypto-shredded (story 14.02): its data key
+     * was destroyed to honor an erasure request, so the immutable ciphertext is no
+     * longer recoverable and the body reads back as empty. A genuinely stored body is
+     * never empty (ingest rejects empty content), so empty bytes unambiguously mean
+     * "content erased" — the egress views render that state instead of a body.
+     */
+    public boolean contentErased() {
+        return rawContent.length == 0;
+    }
 }
