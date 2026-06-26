@@ -68,7 +68,8 @@ class LlmFallbackServiceTest {
 
     private LlmFallbackService service() {
         return new LlmFallbackService(
-                port, properties, new LlmMeter(registry), budget, new EmailFeatureExtractor(), reputation);
+                port, properties, new LlmMeter(registry), budget, new EmailFeatureExtractor(), reputation,
+                new LlmPiiMaskingProperties(com.antispam.privacy.PiiMaskingLevel.STRICT));
     }
 
     private static LlmRawResponse response(String json) {
@@ -98,6 +99,49 @@ class LlmFallbackServiceTest {
         assertThat(outcome.verdict().verdict()).isEqualTo(Verdict.SPAM);
         assertThat(outcome.verdict().spamProb()).isEqualTo(0.92);
         verify(port, times(1)).complete(anyString(), anyString());
+    }
+
+    @Test
+    void the_outbound_prompt_carries_no_unmasked_pii_but_keeps_the_phishing_signal() {
+        // An email whose body carries direct identifiers alongside the phishing signal.
+        Email withPii = TestEmails.bodyContaining(
+                "URGENT PayPal alert. Verify at https://paypal.example.com or call 1-800-555-0199. "
+                + "Card 4111 1111 1111 1111. Reply admin@scam.example.");
+        when(port.complete(anyString(), anyString())).thenReturn(response(validJson()));
+
+        service().classify(withPii, REASONS);
+
+        ArgumentCaptor<String> userContent = ArgumentCaptor.forClass(String.class);
+        verify(port).complete(anyString(), userContent.capture());
+        String sent = userContent.getValue();
+        // Identifiers are masked...
+        assertThat(sent)
+                .doesNotContain("1-800-555-0199")
+                .doesNotContain("4111 1111 1111 1111")
+                .doesNotContain("admin@scam.example.")
+                .contains("[phone]")
+                .contains("[card-number]")
+                .contains("a***@scam.example");
+        // ...while the signal the model classifies on survives.
+        assertThat(sent)
+                .contains("URGENT")
+                .contains("PayPal")
+                .contains("https://paypal.example.com");
+    }
+
+    @Test
+    void masking_off_sends_the_content_unmasked() {
+        Email withPii = TestEmails.bodyContaining("call 1-800-555-0199 now");
+        when(port.complete(anyString(), anyString())).thenReturn(response(validJson()));
+
+        LlmFallbackService offService = new LlmFallbackService(
+                port, properties, new LlmMeter(registry), budget, new EmailFeatureExtractor(), reputation,
+                new LlmPiiMaskingProperties(com.antispam.privacy.PiiMaskingLevel.OFF));
+        offService.classify(withPii, REASONS);
+
+        ArgumentCaptor<String> userContent = ArgumentCaptor.forClass(String.class);
+        verify(port).complete(anyString(), userContent.capture());
+        assertThat(userContent.getValue()).contains("1-800-555-0199");
     }
 
     @Test

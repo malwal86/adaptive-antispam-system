@@ -91,6 +91,33 @@ Rotation is additive and keeps every record readable throughout:
 Erased records are skipped (their key is already gone), and re-running rotation is a no-op
 once converged.
 
+## PII masking before LLM egress (story 14.03)
+
+The LLM fallback (Subsystem 5) sends message content to a third-party model — the single
+largest PII-egress event in the pipeline. Before the prompt leaves our boundary:
+
+- The **grounded context** (the trusted half of the prompt) carries *no* raw content — only
+  derived numeric features, a reputation summary, and the escalation reasons.
+- The **untrusted email block** (sender, subject, body) is scrubbed by `PiiMasker`:
+  email addresses (local-part hidden, domain kept), phone numbers (`[phone]`), and obvious
+  card/account numbers (`[card-number]`) are masked, while URLs, brand mentions, and urgency
+  language — the features the classifier keys on — are preserved verbatim. Masking runs
+  *before* the structural injection-defense defang (05.05).
+
+Masking is **idempotent** and **configurable per provider** via
+`ANTISPAM_LLM_PII_MASKING_LEVEL` (`STRICT` by default; `OFF` only for a provider whose DPA
+makes masking unnecessary). No raw prompt/PII is logged or persisted — the system records
+the verdict, probabilities, reason codes, and cost, never the prompt text.
+
+### Provider data-handling
+
+The default provider is configured via Spring AI (`spring.ai.openai.*`), model
+`gpt-4o-mini`-class. The provider is pluggable (one `ChatClient` adapter,
+`SpringAiLlmChatPort`). When enabling a provider for a deployment, confirm and record its
+data-handling terms — **no-training on submitted data** and **retention window** — and pick
+the masking level accordingly. Masking is the technical control; the DPA is the contractual
+one, and both apply.
+
 ## Standards referenced
 
 - **GDPR** Recital 49 (anti-spam as legitimate interest), Art. 17 (right to erasure).

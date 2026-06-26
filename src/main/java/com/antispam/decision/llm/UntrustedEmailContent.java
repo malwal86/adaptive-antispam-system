@@ -2,6 +2,8 @@ package com.antispam.decision.llm;
 
 import com.antispam.ingest.Email;
 import com.antispam.ingest.ParsedEmail;
+import com.antispam.privacy.PiiMasker;
+import com.antispam.privacy.PiiMaskingLevel;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
@@ -30,6 +32,13 @@ import java.util.regex.Pattern;
  * <p>Defanging is deliberately lossy on adversarial input and a no-op on ordinary mail: real email
  * almost never contains a {@code ===} fence line or chat control tokens, so a legitimate message
  * renders essentially verbatim while an attacker's breakout attempt is neutralized.
+ *
+ * <p><b>PII masking (story 14.03).</b> Before defanging, the sender, subject, and body are scrubbed
+ * of direct identifiers (addresses, phones, card/account numbers) via {@link PiiMasker}, so the
+ * single largest PII-egress event in the pipeline — the prompt leaving for a third-party model —
+ * carries no unmasked identifiers, while the URLs, brand mentions, and urgency language the model
+ * classifies on are preserved. The level is configurable per provider; {@link PiiMaskingLevel#OFF}
+ * skips it for a provider whose data-handling agreement makes masking unnecessary.
  */
 final class UntrustedEmailContent {
 
@@ -46,16 +55,22 @@ final class UntrustedEmailContent {
     private UntrustedEmailContent() {
     }
 
+    /** Renders the data block with the default strict PII masking (story 14.03). */
+    static String render(Email email) {
+        return render(email, PiiMaskingLevel.STRICT);
+    }
+
     /**
      * The hardened, delimited data block for {@code email}: the sender and subject headers and the
-     * body, each defanged, enclosed in the begin/end fence. Always returns a fully fenced block, so
-     * every LLM call carries the delimiters (the story's "100% of calls delimited" metric).
+     * body, each PII-masked (per {@code masking}) then defanged, enclosed in the begin/end fence.
+     * Always returns a fully fenced block, so every LLM call carries the delimiters (the story's
+     * "100% of calls delimited" metric).
      */
-    static String render(Email email) {
+    static String render(Email email, PiiMaskingLevel masking) {
         ParsedEmail meta = email.metadata();
-        String sender = defang(meta == null || meta.sender() == null ? "(unknown)" : meta.sender());
-        String subject = defang(meta == null || meta.subject() == null ? "(none)" : meta.subject());
-        String body = defang(boundedBody(email));
+        String sender = sanitize(meta == null || meta.sender() == null ? "(unknown)" : meta.sender(), masking);
+        String subject = sanitize(meta == null || meta.subject() == null ? "(none)" : meta.subject(), masking);
+        String body = sanitize(boundedBody(email), masking);
         return """
                 %s
                 From: %s
@@ -69,6 +84,16 @@ final class UntrustedEmailContent {
     private static String boundedBody(Email email) {
         String body = new String(email.rawContent(), StandardCharsets.UTF_8);
         return body.length() > MAX_BODY_CHARS ? body.substring(0, MAX_BODY_CHARS) : body;
+    }
+
+    /**
+     * Mask PII (story 14.03), then defang structural breakout vectors (story 05.05). Masking
+     * runs first so it sees the real identifiers; defanging then hardens the fence boundary. PII
+     * masking is skipped when {@code masking} is {@link PiiMaskingLevel#OFF}.
+     */
+    private static String sanitize(String text, PiiMaskingLevel masking) {
+        String masked = masking == PiiMaskingLevel.STRICT ? PiiMasker.mask(text) : text;
+        return defang(masked);
     }
 
     /**

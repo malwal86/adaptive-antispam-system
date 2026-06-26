@@ -70,6 +70,7 @@ public class LlmFallbackService {
     private final LlmBudget budget;
     private final EmailFeatureExtractor featureExtractor;
     private final ReputationService reputation;
+    private final LlmPiiMaskingProperties piiMasking;
 
     /**
      * A strict parser dedicated to this trust boundary: unknown properties are rejected so an
@@ -88,13 +89,15 @@ public class LlmFallbackService {
             LlmMeter meter,
             LlmBudget budget,
             EmailFeatureExtractor featureExtractor,
-            ReputationService reputation) {
+            ReputationService reputation,
+            LlmPiiMaskingProperties piiMasking) {
         this.port = port;
         this.properties = properties;
         this.meter = meter;
         this.budget = budget;
         this.featureExtractor = featureExtractor;
         this.reputation = reputation;
+        this.piiMasking = piiMasking;
     }
 
     /**
@@ -241,7 +244,9 @@ public class LlmFallbackService {
         BetaReputation rep = reputation.reputationFor(senderKey, dmarcAligned);
         GroundedContext context = new GroundedContext(
                 features, SenderReputationSummary.from(rep, dmarcAligned), escalationReasons);
-        return context.render() + "\n\n" + UntrustedEmailContent.render(email);
+        // The grounded context carries no PII (only derived features + a numeric reputation
+        // summary); the raw block is PII-masked before egress per the configured level (14.03).
+        return context.render() + "\n\n" + UntrustedEmailContent.render(email, piiMasking.level());
     }
 
     /**
