@@ -3,30 +3,34 @@
 @tailwind utilities;
 
 /*
- * Material Design 3 tonal tokens (dark scheme — the "abuse lab" reads as a
- * technical console). Values are space-separated RGB channels so Tailwind's
- * `rgb(var(--token) / <alpha>)` can apply opacity. Palette kept small (a neutral
- * surface ramp + one primary + four tier hues), per the UI guidelines.
+ * Material Design 3 tonal tokens (light scheme). Values are space-separated RGB
+ * channels so Tailwind's `rgb(var(--token) / <alpha>)` can apply opacity. Palette
+ * kept small (a neutral surface ramp + one primary + four tier hues), per the UI
+ * guidelines. The neutral ramp ascends from near-white surface up through tonal
+ * containers; tier foregrounds are darkened for legibility on their light
+ * containers (text on a tinted chip), each paired with a soft tonal container.
  */
 :root {
-  --m3-surface: 16 18 23;
-  --m3-surface-container: 24 27 34;
-  --m3-surface-variant: 33 37 46;
-  --m3-on-surface: 226 229 236;
-  --m3-on-surface-variant: 165 173 187;
-  --m3-outline: 60 66 78;
-  --m3-primary: 130 178 255;
-  --m3-on-primary: 0 33 66;
+  color-scheme: light;
+
+  --m3-surface: 250 251 253;
+  --m3-surface-container: 241 243 247;
+  --m3-surface-variant: 228 231 237;
+  --m3-on-surface: 26 28 33;
+  --m3-on-surface-variant: 67 72 82;
+  --m3-outline: 180 186 197;
+  --m3-primary: 28 100 215;
+  --m3-on-primary: 255 255 255;
 
   /* Decision tiers: green → amber → deep-orange → red, each with a soft container. */
-  --tier-allow: 90 196 140;
-  --tier-allow-container: 22 49 38;
-  --tier-warn: 232 188 92;
-  --tier-warn-container: 56 45 18;
-  --tier-quarantine: 240 148 86;
-  --tier-quarantine-container: 58 36 20;
-  --tier-block: 240 110 110;
-  --tier-block-container: 58 24 26;
+  --tier-allow: 28 122 77;
+  --tier-allow-container: 215 242 226;
+  --tier-warn: 138 97 0;
+  --tier-warn-container: 251 238 195;
+  --tier-quarantine: 180 83 14;
+  --tier-quarantine-container: 251 224 203;
+  --tier-block: 196 50 42;
+  --tier-block-container: 251 218 215;
 }
 
 body {
