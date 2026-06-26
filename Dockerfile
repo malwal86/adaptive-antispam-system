@@ -32,6 +32,11 @@ USER spring
 
 COPY --from=build /app/build/libs/*.jar app.jar
 
+# Ship the labeled seed corpus into the image. SeedRunner resolves antispam.seed.corpus-dir
+# (default "seed-corpus") as a filesystem path relative to WORKDIR, so without this the
+# directory is absent at runtime, seeding loads nothing, and /seed/samples returns [].
+COPY --from=build /app/seed-corpus ./seed-corpus
+
 # Host injects PORT; the app reads it (see application.yml). 8080 is the local default.
 EXPOSE 8080
 
