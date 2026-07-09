@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { LiveDecisionCard } from "@/components/lab/LiveDecisionCard";
-import type { AnalyzeResponse } from "@/lib/api";
+import type { AnalyzeResponse, Tier } from "@/lib/api";
 import type { StreamItem } from "@/lib/decisionStream";
+import { TIERS } from "@/lib/tiers";
 
 function card(overrides: Partial<AnalyzeResponse> = {}, resolved = false): StreamItem {
   const decision: AnalyzeResponse = {
@@ -21,89 +22,55 @@ function card(overrides: Partial<AnalyzeResponse> = {}, resolved = false): Strea
 }
 
 describe("LiveDecisionCard", () => {
-  it("reads like an email: from, subject, and a one-line preview", () => {
-    render(
-      <LiveDecisionCard
-        item={card({
-          tier: "allow",
-          routeUsed: "model",
-          reasonCodes: [],
-          sender: "Mom",
-          subject: "Dinner Sunday?",
-          preview: "Are you free for dinner this Sunday?",
-        }, true)}
-      />,
-    );
-    expect(screen.getByTestId("card-sender")).toHaveTextContent("Mom");
-    expect(screen.getByTestId("card-subject")).toHaveTextContent("Dinner Sunday?");
-    expect(screen.getByTestId("card-preview")).toHaveTextContent("free for dinner");
+  it("renders each of the four tiers, distinct and labelled per the analyzer vocabulary", () => {
+    (["allow", "warn", "quarantine", "block"] as Tier[]).forEach((tier) => {
+      const { unmount } = render(
+        // route=model keeps a quarantine final (not pending) for this tier-vocabulary check.
+        <LiveDecisionCard item={card({ tier, routeUsed: "model", reasonCodes: [] }, true)} />,
+      );
+      expect(screen.getByTestId("live-decision-card")).toHaveAttribute("data-tier", tier);
+      expect(screen.getByTestId("tier-label")).toHaveTextContent(TIERS[tier].label);
+      unmount();
+    });
   });
 
-  it("frames a good email as delivered to the inbox", () => {
-    render(
-      <LiveDecisionCard
-        item={card({ tier: "allow", routeUsed: "model", reasonCodes: [], sender: "Acme Store" }, true)}
-      />,
-    );
-    const el = screen.getByTestId("live-decision-card");
-    expect(el).toHaveAttribute("data-folder", "inbox");
-    expect(screen.getByTestId("card-outcome")).toHaveTextContent(/Delivered to inbox/);
-  });
-
-  it("frames a scam as moved to spam, in plain language", () => {
-    render(
-      <LiveDecisionCard
-        item={card({ tier: "block", routeUsed: "hard_rule", reasonCodes: ["KNOWN_BAD_URL"], sender: "Your Bank" })}
-      />,
-    );
-    const el = screen.getByTestId("live-decision-card");
-    expect(el).toHaveAttribute("data-folder", "spam");
-    expect(screen.getByTestId("card-outcome")).toHaveTextContent(/Moved to spam/);
-    // Plain, non-technical reason — not the raw reason code.
-    expect(screen.getByTestId("card-reason")).toHaveTextContent(/known scam site/i);
-    expect(screen.getByTestId("card-reason")).not.toHaveTextContent(/KNOWN_BAD_URL/);
-  });
-
-  it("shows a 'Checking…' affordance while quarantine-pending, no outcome yet", () => {
-    render(
-      <LiveDecisionCard
-        item={card({ tier: "quarantine", routeUsed: "llm", reasonCodes: [], sender: "Parcel Notice" })}
-      />,
-    );
+  it("shows the resolving affordance while quarantine-pending, with no reason chips", () => {
+    render(<LiveDecisionCard item={card({ tier: "quarantine", routeUsed: "llm", reasonCodes: [] })} />);
     expect(screen.getByTestId("live-decision-card")).toHaveAttribute("data-pending", "true");
-    expect(screen.getByTestId("pending-indicator")).toHaveTextContent(/Checking/);
-    expect(screen.queryByTestId("card-outcome")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pending-indicator")).toHaveTextContent(/Resolving/);
+    expect(screen.queryByTestId("reason-chip")).not.toBeInTheDocument();
   });
 
-  it("flips from checking to the final outcome once resolved (never a retraction)", () => {
-    const { rerender } = render(
-      <LiveDecisionCard item={card({ tier: "quarantine", routeUsed: "llm", reasonCodes: [], sender: "Parcel Notice" })} />,
-    );
-    expect(screen.getByTestId("pending-indicator")).toBeInTheDocument();
-
-    rerender(
+  it("drops the pending affordance once resolved and shows the final tier", () => {
+    render(
       <LiveDecisionCard
-        item={card({ tier: "block", routeUsed: "llm", reasonCodes: [], sender: "Parcel Notice" }, true)}
+        item={card({ tier: "allow", routeUsed: "llm", reasonCodes: [] }, true)}
       />,
     );
     const el = screen.getByTestId("live-decision-card");
+    expect(el).toHaveAttribute("data-tier", "allow");
     expect(el).toHaveAttribute("data-resolved", "true");
     expect(el).not.toHaveAttribute("data-pending");
     expect(screen.queryByTestId("pending-indicator")).not.toBeInTheDocument();
-    expect(screen.getByTestId("card-outcome")).toHaveTextContent(/Moved to spam/);
   });
 
-  it("falls back to a short id when the feed carries no envelope (ordinary traffic)", () => {
-    render(<LiveDecisionCard item={card({ tier: "allow", routeUsed: "model", reasonCodes: [] }, true)} />);
-    expect(screen.getByTestId("card-sender")).toHaveTextContent(/d7db7c1d/i);
-    expect(screen.queryByTestId("card-subject")).not.toBeInTheDocument();
+  it("reflects the deciding route and its reason chips", () => {
+    const { rerender } = render(<LiveDecisionCard item={card({ routeUsed: "hard_rule" })} />);
+    expect(screen.getByTestId("route-used")).toHaveTextContent("Hard rule");
+    expect(screen.getByTestId("reason-chip")).toHaveTextContent("Known-bad URL");
+
+    rerender(<LiveDecisionCard item={card({ routeUsed: "model", reasonCodes: [] })} />);
+    expect(screen.getByTestId("route-used")).toHaveTextContent("Model");
+
+    rerender(<LiveDecisionCard item={card({ routeUsed: "llm", tier: "allow", reasonCodes: [] }, true)} />);
+    expect(screen.getByTestId("route-used")).toHaveTextContent("LLM");
   });
 
   it("is a button that reports its selection when onSelect is given", () => {
     const onSelect = vi.fn();
     render(
       <LiveDecisionCard
-        item={card({ tier: "allow", routeUsed: "model", reasonCodes: [], sender: "Mom" }, true)}
+        item={card({ tier: "allow", routeUsed: "model", reasonCodes: [] }, true)}
         onSelect={onSelect}
       />,
     );
@@ -117,7 +84,7 @@ describe("LiveDecisionCard", () => {
     const onSelect = vi.fn();
     render(
       <LiveDecisionCard
-        item={card({ tier: "allow", routeUsed: "model", reasonCodes: [], sender: "Mom" }, true)}
+        item={card({ tier: "allow", routeUsed: "model", reasonCodes: [] }, true)}
         onSelect={onSelect}
       />,
     );
