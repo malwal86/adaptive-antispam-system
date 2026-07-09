@@ -13,6 +13,9 @@ import com.antispam.decision.calibration.ActiveCalibrator;
 import com.antispam.decision.calibration.ProbabilityCalibrator;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
+import com.antispam.reputation.ReputationBucket;
+import com.antispam.reputation.ReputationService;
+import com.antispam.reputation.ReputationSignal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -45,6 +48,8 @@ class ScenarioServiceTest {
     private PolicyRepository policies;
     @Mock
     private ActiveCalibrator calibrator;
+    @Mock
+    private ReputationService reputationService;
 
     /** A real catalog over the pure scenario builders — dispatch resolves names through it. */
     private final ScenarioCatalog catalog =
@@ -58,7 +63,8 @@ class ScenarioServiceTest {
     }
 
     private ScenarioService service(ScenarioProperties properties) {
-        return new ScenarioService(catalog, analyzeService, policies, calibrator, inline, properties, FIXED);
+        return new ScenarioService(
+                catalog, analyzeService, policies, calibrator, reputationService, inline, properties, FIXED);
     }
 
     private static Policy active(String version) {
@@ -151,6 +157,36 @@ class ScenarioServiceTest {
     }
 
     @Test
+    void it_prewarms_the_scenarios_good_senders_before_dispatch() {
+        when(policies.findShadow()).thenReturn(Optional.empty());
+        when(policies.findActive()).thenReturn(Optional.of(active("active")));
+
+        service().start(NormalMorningScenario.NAME, 1L);
+
+        // Each of the everyday-inbox scenario's declared good senders is seeded with authenticated GOOD
+        // reputation, so their benign mail is an instant inbox decision rather than an LLM escalation.
+        List<Scenario.SenderWarmup> expected = new NormalMorningScenario().prewarm();
+        assertThat(expected).isNotEmpty();
+        for (Scenario.SenderWarmup warmup : expected) {
+            verify(reputationService).record(
+                    warmup.senderKey(), ReputationSignal.GOOD, warmup.weight(),
+                    "scenario-warmup", ReputationBucket.AUTHENTICATED);
+        }
+    }
+
+    @Test
+    void a_scenario_with_no_warmups_seeds_no_reputation() {
+        when(policies.findShadow()).thenReturn(Optional.empty());
+        when(policies.findActive()).thenReturn(Optional.of(active("active")));
+
+        // The thunderclap deliberately keeps every sender cold, so nothing is pre-warmed.
+        service().start(ThunderclapScript.NAME, 1L);
+
+        verify(reputationService, never()).record(anyString(), any(), org.mockito.ArgumentMatchers.anyDouble(),
+                anyString(), any());
+    }
+
+    @Test
     void an_operators_existing_calibration_is_respected_not_overwritten() {
         when(policies.findShadow()).thenReturn(Optional.empty());
         when(policies.findActive()).thenReturn(Optional.of(active("active")));
@@ -205,7 +241,8 @@ class ScenarioServiceTest {
                     .isInstanceOf(IllegalStateException.class);
             task.run();
         };
-        holder[0] = new ScenarioService(catalog, analyzeService, policies, calibrator, reentrant, NO_PACING, FIXED);
+        holder[0] = new ScenarioService(
+                catalog, analyzeService, policies, calibrator, reputationService, reentrant, NO_PACING, FIXED);
 
         holder[0].start(ThunderclapScript.NAME, 1L);
 

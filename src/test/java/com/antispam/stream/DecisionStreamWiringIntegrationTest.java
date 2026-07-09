@@ -44,9 +44,9 @@ class DecisionStreamWiringIntegrationTest extends AbstractPostgresIntegrationTes
 
         assertThat(stream.lastEventId()).isEqualTo(before + 1);
         List<DecisionStream.Sequenced> replay = stream.bufferedSince(before);
-        assertThat(replay).extracting(seq -> seq.decision().classificationId())
+        assertThat(replay).extracting(seq -> seq.decision().verdict().classificationId())
                 .contains(decision.id());
-        AnalyzeResponse payload = replay.get(replay.size() - 1).decision();
+        AnalyzeResponse payload = replay.get(replay.size() - 1).decision().verdict();
         assertThat(payload.tier()).isEqualTo("block");
         assertThat(payload.routeUsed()).isEqualTo("hard_rule");
     }

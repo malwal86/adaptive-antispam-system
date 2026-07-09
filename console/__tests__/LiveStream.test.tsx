@@ -47,6 +47,24 @@ describe("LiveStream", () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]).toHaveAttribute("data-tier", "block");
     expect(cards[1]).toHaveAttribute("data-tier", "allow");
-    expect(screen.getByText("Known-bad URL")).toBeInTheDocument();
+    // The scam's plain-language reason, not the raw reason code.
+    expect(screen.getByText(/known scam site/i)).toBeInTheDocument();
+  });
+
+  it("tallies where mail landed at a glance", () => {
+    render(
+      <LiveStream
+        status="open"
+        items={[
+          card({ emailId: "e-block", classificationId: "b", tier: "block" }),
+          card({ emailId: "e-allow", classificationId: "a", tier: "allow", reasonCodes: [], routeUsed: "model" }, true),
+          card({ emailId: "e-pending", classificationId: "p", tier: "quarantine", reasonCodes: [], routeUsed: "llm" }),
+        ]}
+      />,
+    );
+    const summary = screen.getByTestId("stream-tally");
+    expect(summary).toHaveTextContent(/1 delivered/);
+    expect(summary).toHaveTextContent(/1 blocked/);
+    expect(summary).toHaveTextContent(/1 checking/);
   });
 });

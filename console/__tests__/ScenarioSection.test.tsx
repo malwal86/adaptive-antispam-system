@@ -9,7 +9,8 @@ describe("ScenarioSection", () => {
 
     fireEvent.click(screen.getByTestId("scenario-start"));
 
-    expect(onStart).toHaveBeenCalledWith("sender_warms_up_then_attacks");
+    // The everyday-inbox scenario is the default — the one anyone can read at a glance.
+    expect(onStart).toHaveBeenCalledWith("a_normal_morning");
   });
 
   it("disables the picker and button while a run is in flight", () => {

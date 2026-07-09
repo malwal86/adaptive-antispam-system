@@ -76,13 +76,18 @@ class DecisionStreamTest {
 
         stream.onDecision(new DecisionMadeEvent(decision));
 
-        AnalyzeResponse payload = stream.bufferedSince(0).get(0).decision();
+        LiveDecision card = stream.bufferedSince(0).get(0).decision();
+        AnalyzeResponse payload = card.verdict();
         assertThat(payload.classificationId()).isEqualTo(decision.id());
         assertThat(payload.emailId()).isEqualTo(decision.emailId());
         assertThat(payload.tier()).isEqualTo("block");
         assertThat(payload.routeUsed()).isEqualTo("hard_rule");
         assertThat(payload.reasonCodes()).containsExactly("KNOWN_BAD_URL");
         assertThat(payload.duplicate()).isFalse();
+        // No email lookup on this test seam → ordinary traffic, no envelope surfaced.
+        assertThat(card.sender()).isNull();
+        assertThat(card.subject()).isNull();
+        assertThat(card.preview()).isNull();
     }
 
     @Test

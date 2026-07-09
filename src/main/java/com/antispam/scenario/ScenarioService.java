@@ -5,6 +5,9 @@ import com.antispam.decision.calibration.ActiveCalibrator;
 import com.antispam.decision.calibration.ProbabilityCalibrator;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
+import com.antispam.reputation.ReputationBucket;
+import com.antispam.reputation.ReputationService;
+import com.antispam.reputation.ReputationSignal;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +48,7 @@ public class ScenarioService {
     private final AnalyzeService analyzeService;
     private final PolicyRepository policies;
     private final ActiveCalibrator calibrator;
+    private final ReputationService reputationService;
     private final ScenarioDispatcher dispatcher;
     private final ScenarioProperties properties;
     private final Clock clock;
@@ -61,6 +65,7 @@ public class ScenarioService {
             AnalyzeService analyzeService,
             PolicyRepository policies,
             ActiveCalibrator calibrator,
+            ReputationService reputationService,
             ScenarioDispatcher dispatcher,
             ScenarioProperties properties,
             Clock clock) {
@@ -68,6 +73,7 @@ public class ScenarioService {
         this.analyzeService = analyzeService;
         this.policies = policies;
         this.calibrator = calibrator;
+        this.reputationService = reputationService;
         this.dispatcher = dispatcher;
         this.properties = properties;
         this.clock = clock;
@@ -90,6 +96,7 @@ public class ScenarioService {
             long resolvedSeed = seed != null ? seed : properties.defaultSeed();
             List<ScenarioEmail> script = scenario.build(resolvedSeed);
             ensureCalibrated();
+            prewarm(scenario);
             String shadowVersion = ensureShadowPolicy();
             dispatcher.dispatch(() -> runToCompletion(script));
             return new ScenarioRun(scenario.name(), script.size(), resolvedSeed, shadowVersion);
@@ -113,6 +120,23 @@ public class ScenarioService {
         if (!calibrator.isCalibrated()) {
             calibrator.install(ProbabilityCalibrator.identity());
             log.info("scenario: no calibration installed; installed identity so the fusion stage runs");
+        }
+    }
+
+    /**
+     * Seeds the scenario's declared {@link Scenario#prewarm() good senders} with authenticated good
+     * reputation before any mail flows, so their benign first email is a confident, instant inbox
+     * decision on the model route instead of being escalated to the LLM as a brand-new sender would be
+     * (that escalation is exactly what made the everyday-inbox demo a column of "checking…" cards). A
+     * single high-weight good signal drops the sender's uncertainty below the routing band. Scenarios
+     * that want cold-start senders (the thunderclap) declare no warm-ups, so this is a no-op for them.
+     */
+    private void prewarm(Scenario scenario) {
+        for (Scenario.SenderWarmup warmup : scenario.prewarm()) {
+            reputationService.record(
+                    warmup.senderKey(), ReputationSignal.GOOD, warmup.weight(),
+                    "scenario-warmup", ReputationBucket.AUTHENTICATED);
+            log.info("scenario: pre-warmed sender={} weight={}", warmup.senderKey(), warmup.weight());
         }
     }
 

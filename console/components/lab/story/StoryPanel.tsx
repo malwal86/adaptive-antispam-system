@@ -54,34 +54,42 @@ export function StoryPanel({ stats }: { stats: StreamStats }) {
     >
       <div className="flex items-center gap-2 text-on-surface">
         <Icon name="insights" className="text-[20px] text-on-surface-variant" />
-        <h2 className="text-title-sm font-medium">Story</h2>
+        <h2 className="text-title-sm font-medium">Behind the scenes</h2>
       </div>
 
-      <section aria-label="Reputation">
+      <section aria-label="How much we trust the sender">
         <ReputationChart series={stats.trustSeries} />
       </section>
 
       <hr className="border-outline/30" />
 
-      <section aria-label="Route mix">
+      <section aria-label="How it decided">
         <RouteMixBar stats={stats} />
       </section>
 
-      <hr className="border-outline/30" />
+      {/* The two most technical read-outs stay one tap away, so they don't dominate a lay viewer's
+          first read of the panel. */}
+      <details className="group rounded-md border border-outline/30 bg-surface/30 open:bg-surface/40">
+        <summary className="flex cursor-pointer items-center gap-1.5 px-3 py-2 text-label-md text-on-surface-variant">
+          <Icon name="expand_more" className="text-[16px] transition-transform group-open:rotate-180" />
+          For the curious: cost &amp; benchmark
+        </summary>
+        <div className="flex flex-col gap-5 px-3 pb-3 pt-1">
+          <section aria-label="LLM cost">
+            <CostMeter
+              costUsd={stats.costUsd}
+              capUsd={budget?.dailyCapUsd ?? 0}
+              enforced={budget?.enabled ?? false}
+            />
+          </section>
 
-      <section aria-label="LLM cost">
-        <CostMeter
-          costUsd={stats.costUsd}
-          capUsd={budget?.dailyCapUsd ?? 0}
-          enforced={budget?.enabled ?? false}
-        />
-      </section>
+          <hr className="border-outline/30" />
 
-      <hr className="border-outline/30" />
-
-      <section aria-label="Danger missed by baseline">
-        <BaselineMissTable misses={misses} loading={trendLoading} error={trendError} />
-      </section>
+          <section aria-label="Scams an old-school filter would miss">
+            <BaselineMissTable misses={misses} loading={trendLoading} error={trendError} />
+          </section>
+        </div>
+      </details>
     </aside>
   );
 }

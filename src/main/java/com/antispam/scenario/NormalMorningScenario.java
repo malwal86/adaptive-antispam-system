@@ -11,17 +11,25 @@ import java.util.Random;
 import org.springframework.stereotype.Component;
 
 /**
- * "A normal morning": routine inbox triage, no dramatic beat. A couple of genuinely legitimate,
- * authenticated emails and an authenticated newsletter arrive alongside two pieces of obvious junk
- * from unknown, unauthenticated senders — so the console shows the everyday split (most mail waved
- * through, the clear-cut spam stopped) rather than the thunderclap's rise-and-collapse.
+ * "An everyday inbox": the calm, legible demo anyone can read at a glance. A handful of real-looking
+ * emails arrive — a note from Mom, a store newsletter, an order receipt — and land in the inbox,
+ * while two obvious scams (a fake bank alert and a prize scam) are blocked outright, and one
+ * borderline "your package is held" notice is briefly checked before it, too, is stopped. It is the
+ * everyday split — most mail waved through, the clear-cut abuse stopped — with none of the analyst
+ * jargon.
  *
- * <p>It teaches the calm case the {@link SenderTurnsHostileScenario dramatic one} does not: the system
- * is not trigger-happy — well-formed, authenticated mail (including bulk newsletters) is allowed,
- * while unauthenticated, shouty spam is blocked on content. Like every scenario it is a pure, seeded
- * function of the seed: the ref tokens vary with it so re-runs aren't identical, but the beats and
- * verdicts are fixed. Every email travels the same live pipeline; the {@code source} tag just makes
- * this scenario's mail auditable apart from the thunderclap's.
+ * <p>Two design choices make the run <em>readable</em> rather than a column of "checking…" cards:
+ * <ul>
+ *   <li>The good senders are {@link #prewarm() pre-warmed} with authenticated good reputation, so
+ *       their benign mail is a confident, instant inbox decision on the model route — not escalated
+ *       to the LLM the way every brand-new sender otherwise is.</li>
+ *   <li>The two flagrant scams link to <em>denylisted</em> hosts, so a hard rule blocks them
+ *       immediately (no model, no LLM) — a decisive, explainable "this is a scam".</li>
+ * </ul>
+ * Exactly one email — the delivery-notice — is left an unseen sender with mildly suspicious content,
+ * so it is the single deliberate "checked, then decided" beat. Every email still travels the same
+ * live pipeline; the verdicts are real backend decisions, never scripted. Like every scenario it is a
+ * pure, seeded function of the seed (the ref tokens vary; the beats and senders are fixed).
  */
 @Component
 public class NormalMorningScenario implements Scenario {
@@ -33,6 +41,22 @@ public class NormalMorningScenario implements Scenario {
     /** A fixed base instant (not {@code now}) keeps the built bytes seeded and reproducible. */
     private static final Instant BASE = Instant.parse("2026-06-25T08:00:00Z");
 
+    // The three genuinely-good senders (display name + address). Pre-warmed so their mail lands in the
+    // inbox instantly; the display name is what the console card shows as the "from".
+    private static final String MOM = "Mom <mom@family.example>";
+    private static final String STORE = "Acme Store <weekly@acme-store.example>";
+    private static final String RECEIPT = "Rivertown Goods <receipts@rivertown-goods.example>";
+    // Their bare addresses, matching SenderKey.of(...) exactly, for pre-warming reputation.
+    private static final String MOM_KEY = "mom@family.example";
+    private static final String STORE_KEY = "weekly@acme-store.example";
+    private static final String RECEIPT_KEY = "receipts@rivertown-goods.example";
+    /** One high-weight good signal drops a sender's uncertainty below the routing band in one write. */
+    private static final double WARMUP_WEIGHT = 20.0;
+
+    /** Denylisted look-alike hosts (see {@code antispam.hard-rules.url-denylist}); a link to either → BLOCK. */
+    static final String BANK_SCAM_HOST = "secure-bank-verify.example";
+    static final String PRIZE_SCAM_HOST = "prize-claim-center.example";
+
     private static final java.time.format.DateTimeFormatter RFC_822_DATE =
             java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.US);
 
@@ -42,50 +66,73 @@ public class NormalMorningScenario implements Scenario {
     }
 
     @Override
+    public List<Scenario.SenderWarmup> prewarm() {
+        // The good senders start trusted so their benign mail is an instant inbox decision, not an
+        // LLM escalation. The scam and delivery-notice senders are deliberately left unseeded.
+        return List.of(
+                new Scenario.SenderWarmup(MOM_KEY, WARMUP_WEIGHT),
+                new Scenario.SenderWarmup(STORE_KEY, WARMUP_WEIGHT),
+                new Scenario.SenderWarmup(RECEIPT_KEY, WARMUP_WEIGHT));
+    }
+
+    @Override
     public List<ScenarioEmail> build(long seed) {
         Random rng = new Random(seed);
         List<ScenarioEmail> script = new ArrayList<>();
         int minute = 0;
 
-        // A genuinely legitimate, authenticated colleague — benign, no links: plainly allowed.
-        script.add(email(Beat.LEGIT, "priya@partner-co.example", null,
-                "Re: Thursday sync moved to 2pm",
-                "Hi — just confirming the sync is now at 2pm Thursday. I moved the doc link into the "
-                        + "calendar invite. See you then!\n\nPriya",
+        // A note from Mom: authenticated, personal, no links — plainly delivered to the inbox.
+        script.add(email(Beat.LEGIT, MOM, null,
+                "Dinner Sunday?",
+                "Hi love — are you free for dinner this Sunday? Dad's making his lasagne. Let me know "
+                        + "and I'll get the ingredients. No rush.\n\nLove, Mom xx",
                 Auth.PASS, BASE.plusSeconds(60L * minute++)));
 
-        // An authenticated newsletter: bulk, but well-formed with an ordinary link — allowed, not
-        // punished for volume. (A single normal https link is not a phishing tell.)
-        script.add(email(Beat.NEWSLETTER, "brief@morning-brief.example", null,
-                "The Morning Brief — Tuesday",
-                "Good morning! Today's three stories, in two minutes.\n\nRead the full brief: "
-                        + "https://morning-brief.example/issues/" + ref(rng)
-                        + "\n\nYou are receiving this because you subscribed. Unsubscribe any time.",
+        // A store newsletter: authenticated bulk mail with one ordinary link — allowed, not punished
+        // for being promotional (a single normal https link is not a phishing tell).
+        script.add(email(Beat.NEWSLETTER, STORE, null,
+                "This week's deals — up to 30% off",
+                "Good morning! Here are this week's picks, hand-chosen for you.\n\nBrowse the sale: "
+                        + "https://acme-store.example/weekly/" + ref(rng)
+                        + "\n\nYou're receiving this because you subscribed. Unsubscribe any time.",
                 Auth.PASS, BASE.plusSeconds(60L * minute++)));
 
-        // A legitimate transactional receipt, authenticated, benign — allowed.
-        script.add(email(Beat.LEGIT, "receipts@rivertown-coffee.example", null,
-                "Your receipt from Rivertown Coffee",
-                "Thanks for stopping by! You paid $4.75 for one flat white. No action needed — this "
-                        + "receipt is for your records.\n\nRivertown Coffee",
-                Auth.PASS, BASE.plusSeconds(60L * minute++)));
-
-        // Obvious junk from an unknown, unauthenticated sender: shouty, a bait link — blocked on content.
-        script.add(email(Beat.SPAM, "rewards@prize-claim-center.example",
-                "claims@prize-payout-desk.example",
-                "CONGRATULATIONS!!! You have WON a $1,000 GIFT CARD",
-                "Dear WINNER!! Your email was SELECTED in our monthly draw. CLAIM YOUR $1,000 GIFT "
-                        + "CARD NOW before it EXPIRES: http://203.0.113.7/claim/reward?ref=" + ref(rng)
-                        + "&code=" + ref(rng) + "\n\nACT FAST — this offer will NOT be repeated!!",
+        // A fake "your bank" alert: links to a denylisted look-alike host, so a hard rule blocks it
+        // outright — the decisive "this is a scam", no model or LLM needed.
+        script.add(email(Beat.SPAM, "Your Bank Security <security@your-bank-alerts.example>",
+                "no-reply@your-bank-alerts.example",
+                "Action required: verify your account now",
+                "We detected unusual activity on your account. To avoid suspension you must verify "
+                        + "your details immediately: http://" + BANK_SCAM_HOST + "/login?ref=" + ref(rng)
+                        + "\n\nFailure to verify within 24 hours will lock your account.",
                 Auth.FAIL, BASE.plusSeconds(60L * minute++)));
 
-        // A second, equally clear scam — a fake delivery notice — also unauthenticated and blocked.
-        script.add(email(Beat.SPAM, "alerts@parcel-redelivery.example",
-                "support@parcel-redelivery-billing.example",
-                "Your PACKAGE could not be delivered — CLICK NOW to reschedule",
-                "URGENT: your parcel is being HELD. A small redelivery fee is REQUIRED. Confirm your "
-                        + "details IMMEDIATELY: http://198.51.100.9/redelivery/confirm?ref=" + ref(rng)
-                        + "\n\nFailure to respond within 24 HOURS will return your package to sender.",
+        // A genuine order receipt: authenticated, transactional, benign — delivered.
+        script.add(email(Beat.LEGIT, RECEIPT, null,
+                "Your order has shipped",
+                "Thanks for your order! Your parcel is on its way and should arrive in 2–3 days. No "
+                        + "action needed — this note is just for your records.\n\nRivertown Goods",
+                Auth.PASS, BASE.plusSeconds(60L * minute++)));
+
+        // A classic prize scam: shouty, and links to a denylisted host — blocked outright.
+        script.add(email(Beat.SPAM, "Prize Department <winner@prize-claim-center.example>",
+                "claims@prize-claim-center.example",
+                "CONGRATULATIONS!!! You have WON a $1,000 gift card",
+                "Dear WINNER!! Your email was SELECTED in our monthly draw. CLAIM YOUR $1,000 GIFT "
+                        + "CARD NOW before it EXPIRES: http://" + PRIZE_SCAM_HOST + "/claim?code=" + ref(rng)
+                        + "\n\nACT FAST — this offer will NOT be repeated!!",
+                Auth.FAIL, BASE.plusSeconds(60L * minute++)));
+
+        // A borderline "package held" notice from an unseen sender with a plain (not denylisted) link
+        // and manufactured urgency. Being a brand-new sender, it is checked by the LLM
+        // (quarantine-pending) and then resolved — the one deliberate "system thought about it" beat.
+        script.add(email(Beat.SPAM, "Parcel Notice <notice@parcel-redelivery.example>",
+                null,
+                "Your package is being held — reschedule delivery",
+                "We attempted to deliver your parcel but could not complete it. Please confirm your "
+                        + "delivery preferences to avoid it being returned: "
+                        + "https://parcel-redelivery.example/reschedule/" + ref(rng)
+                        + "\n\nPlease respond within 48 hours.",
                 Auth.FAIL, BASE.plusSeconds(60L * minute++)));
 
         return List.copyOf(script);

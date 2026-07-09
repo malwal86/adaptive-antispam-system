@@ -18,16 +18,16 @@ import { ApplyStatusChip, type ApplyStatus } from "@/components/lab/controls/App
  */
 const SCENARIOS = [
   {
+    id: "a_normal_morning",
+    title: "An everyday inbox",
+    description:
+      "Watch a real-looking inbox defend itself: a note from Mom, a newsletter and a receipt land in the inbox, while a fake bank alert and a prize scam get moved to spam. One borderline notice is checked, then blocked. The everyday split, at a glance.",
+  },
+  {
     id: "sender_warms_up_then_attacks",
     title: "A trusted sender turns hostile",
     description:
       "A sender earns trust with normal, authenticated mail — then that same account is compromised and blasts phishing. Watch the trust curve climb, then collapse as the attack is caught and blocked.",
-  },
-  {
-    id: "a_normal_morning",
-    title: "A normal morning",
-    description:
-      "A routine inbox: a couple of genuine emails and a newsletter sail through while two obvious scams are stopped. The everyday split — proof the system isn't trigger-happy.",
   },
 ] as const;
 
