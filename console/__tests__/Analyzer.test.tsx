@@ -55,7 +55,7 @@ describe("Analyzer", () => {
 
     expect(await screen.findByTestId("result-card")).toHaveAttribute("data-tier", "block");
     expect(analyzeRaw).toHaveBeenCalledOnce();
-    expect(screen.getByTestId("tier-label")).toHaveTextContent("Block");
+    expect(screen.getByTestId("tier-label")).toHaveTextContent("Spam");
   });
 
   it("analyses a picked seed sample by id", async () => {
