@@ -33,9 +33,17 @@ class ThunderclapScriptTest {
         return EmailFeatureExtractor.displayText(raw);
     }
 
-    private static int urlCount(byte[] raw) {
+    private static com.antispam.features.FeatureSet.LinkFeatures links(byte[] raw) {
         // The feature extractor reads links from the raw (markup-preserving) body.
-        return EmailFeatureExtractor.linkFeatures(new String(raw, StandardCharsets.UTF_8)).urlCount();
+        return EmailFeatureExtractor.linkFeatures(new String(raw, StandardCharsets.UTF_8));
+    }
+
+    private static int urlCount(byte[] raw) {
+        return links(raw).urlCount();
+    }
+
+    private static boolean hasReplyTo(byte[] raw) {
+        return new String(raw, StandardCharsets.UTF_8).contains("\r\nReply-To:");
     }
 
     @Test
@@ -82,10 +90,15 @@ class ThunderclapScriptTest {
         assertThat(attack).hasSizeGreaterThan(1);
         for (ScenarioEmail email : attack) {
             // The warmed sender turning bad: same domain, still DMARC-aligned, so the curve that rose
-            // is the one that collapses — and a phishing link is present in every variant.
+            // is the one that collapses. But the content carries the structural phishing tells the
+            // model escalates on despite the passing auth — a raw-IP link, a punycode look-alike, and
+            // an off-domain Reply-To — which is what actually makes the demo turn hostile.
             assertThat(PARSER.parse(email.raw()).senderDomain()).isEqualTo(ThunderclapScript.WARM_DOMAIN);
             assertThat(dmarc(email.raw())).isEqualTo("pass");
             assertThat(urlCount(email.raw())).isGreaterThanOrEqualTo(1);
+            assertThat(links(email.raw()).hasIpUrl()).as("raw-IP phishing link").isTrue();
+            assertThat(links(email.raw()).hasPunycodeDomain()).as("punycode look-alike link").isTrue();
+            assertThat(hasReplyTo(email.raw())).as("off-domain Reply-To").isTrue();
         }
         // Mutated, not cloned: the bodies are near-duplicates (a campaign) yet not all identical.
         long distinctBodies = attack.stream().map(e -> body(e.raw())).distinct().count();

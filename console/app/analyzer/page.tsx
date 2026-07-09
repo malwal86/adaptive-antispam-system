@@ -6,7 +6,7 @@ import { TIERS } from "@/lib/tiers";
 import type { Tier } from "@/lib/api";
 
 export const metadata: Metadata = {
-  title: "Abuse Lab — Single-Email Analyzer",
+  title: "Living Spam Classifier Lab — Single-Email Analyzer",
   description:
     "Paste or pick an email and see the Living Anti-Spam System's decision: tier, reason codes, route, and latency.",
 };
@@ -23,7 +23,7 @@ export default function AnalyzerPage() {
               <Icon name="shield" filled className="text-[26px]" />
             </span>
             <div>
-              <h1 className="text-display-sm font-medium tracking-tight">Abuse Lab</h1>
+              <h1 className="text-display-sm font-medium tracking-tight">Living Spam Classifier Lab</h1>
               <p className="text-body-md text-on-surface-variant">
                 Single-email analyzer · Living Anti-Spam System
               </p>

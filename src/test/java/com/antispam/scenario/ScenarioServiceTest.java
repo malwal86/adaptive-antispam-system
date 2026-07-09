@@ -9,6 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.antispam.analyze.AnalyzeService;
+import com.antispam.decision.calibration.ActiveCalibrator;
+import com.antispam.decision.calibration.ProbabilityCalibrator;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import java.time.Clock;
@@ -41,6 +43,12 @@ class ScenarioServiceTest {
     private AnalyzeService analyzeService;
     @Mock
     private PolicyRepository policies;
+    @Mock
+    private ActiveCalibrator calibrator;
+
+    /** A real catalog over the pure scenario builders — dispatch resolves names through it. */
+    private final ScenarioCatalog catalog =
+            new ScenarioCatalog(List.of(new SenderTurnsHostileScenario(), new NormalMorningScenario()));
 
     /** A dispatcher that runs the loop inline, so the test sees its effects without threading. */
     private final ScenarioDispatcher inline = Runnable::run;
@@ -50,7 +58,7 @@ class ScenarioServiceTest {
     }
 
     private ScenarioService service(ScenarioProperties properties) {
-        return new ScenarioService(analyzeService, policies, inline, properties, FIXED);
+        return new ScenarioService(catalog, analyzeService, policies, calibrator, inline, properties, FIXED);
     }
 
     private static Policy active(String version) {
@@ -129,6 +137,31 @@ class ScenarioServiceTest {
     }
 
     @Test
+    void it_installs_identity_calibration_so_fusion_runs_when_none_is_present() {
+        when(policies.findShadow()).thenReturn(Optional.empty());
+        when(policies.findActive()).thenReturn(Optional.of(active("active")));
+        when(calibrator.isCalibrated()).thenReturn(false);
+
+        service().start(ThunderclapScript.NAME, 1L);
+
+        // Without a calibration the fusion stage refuses to fuse and every model-route email is a
+        // provisional ALLOW — the scenario could never turn hostile. The runner installs the identity
+        // so the model's own probabilities are fused as-is.
+        verify(calibrator).install(any(ProbabilityCalibrator.class));
+    }
+
+    @Test
+    void an_operators_existing_calibration_is_respected_not_overwritten() {
+        when(policies.findShadow()).thenReturn(Optional.empty());
+        when(policies.findActive()).thenReturn(Optional.of(active("active")));
+        when(calibrator.isCalibrated()).thenReturn(true);
+
+        service().start(ThunderclapScript.NAME, 1L);
+
+        verify(calibrator, never()).install(any());
+    }
+
+    @Test
     void with_no_active_policy_the_run_still_proceeds_without_a_shadow() {
         when(policies.findShadow()).thenReturn(Optional.empty());
         when(policies.findActive()).thenReturn(Optional.empty());
@@ -172,7 +205,7 @@ class ScenarioServiceTest {
                     .isInstanceOf(IllegalStateException.class);
             task.run();
         };
-        holder[0] = new ScenarioService(analyzeService, policies, reentrant, NO_PACING, FIXED);
+        holder[0] = new ScenarioService(catalog, analyzeService, policies, calibrator, reentrant, NO_PACING, FIXED);
 
         holder[0].start(ThunderclapScript.NAME, 1L);
 

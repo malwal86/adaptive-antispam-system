@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * The single-email analyzer (story 01.05): the first user-facing decision surface
- * and the seed of the Abuse Lab Console (Epic 12).
+ * and the seed of the Living Spam Classifier Lab Console (Epic 12).
  *
  * <p>{@code POST /analyze} takes either a pasted raw message (JSON {@code raw}, or
  * a {@code text/plain}/{@code message/rfc822} body) or an existing email id (JSON

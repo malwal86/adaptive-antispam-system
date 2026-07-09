@@ -6,6 +6,7 @@ import com.antispam.AbstractPostgresIntegrationTest;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,14 +85,25 @@ class ThunderclapScenarioIntegrationTest extends AbstractPostgresIntegrationTest
         Policy shadow = policies.findShadow().orElseThrow();
         assertThat(shadow.version()).startsWith("thunderclap-shadow-");
         assertThat(run.shadowPolicyVersion()).isEqualTo(shadow.version());
+
+        // It actually turns hostile: start() ensured a calibration so the fusion stage runs, so the
+        // warmed sender's benign warm-up is allowed, but the compromised-account phishing burst —
+        // DMARC-aligned yet full of phishing tells (raw-IP link, punycode, off-domain Reply-To) — no
+        // longer sails through as ALLOW. The demo's rise-then-collapse is a real decision flip.
+        assertThat(tiers(Beat.WARMUP)).isNotEmpty().allMatch("ALLOW"::equals);
+        assertThat(tiers(Beat.ATTACK)).isNotEmpty().noneMatch("ALLOW"::equals);
     }
 
     /** How many emails of this beat have been decided (a classification joined to its email row). */
     private int decided(Beat beat) {
-        Integer count = jdbc.queryForObject(
-                "select count(*) from classifications c join emails e on c.email_id = e.id "
-                        + "where e.ingest_source = ?",
-                Integer.class, beat.source());
-        return count == null ? 0 : count;
+        return tiers(beat).size();
+    }
+
+    /** The decision tier of every decided email of this beat, in decision order. */
+    private List<String> tiers(Beat beat) {
+        return jdbc.queryForList(
+                "select c.decision from classifications c join emails e on c.email_id = e.id "
+                        + "where e.ingest_source = ? order by c.created_at",
+                String.class, beat.source());
     }
 }

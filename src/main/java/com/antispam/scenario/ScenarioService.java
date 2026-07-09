@@ -1,6 +1,8 @@
 package com.antispam.scenario;
 
 import com.antispam.analyze.AnalyzeService;
+import com.antispam.decision.calibration.ActiveCalibrator;
+import com.antispam.decision.calibration.ProbabilityCalibrator;
 import com.antispam.decision.policy.Policy;
 import com.antispam.decision.policy.PolicyRepository;
 import java.time.Clock;
@@ -14,13 +16,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
- * Drives the thunderclap scenario (story 12.05): the one scripted demo that warms up a sender, then
- * injects a mutated phishing campaign, so a single control action lands every headline beat —
- * reputation rise then collapse, burst override, LLM escalation, the cost meter ticking, the shadow
- * diff lighting up, a spoof that gets nothing, and a misconfigured-legit sender that still earns
- * trust.
+ * Drives a scripted scenario (story 12.05): a single control action that injects a named scenario's
+ * emails through the live pipeline so the console animates real backend decisions. The
+ * {@link ScenarioCatalog} resolves the name to a {@link Scenario} builder, so which stories exist is
+ * open-ended — the thunderclap's rise-then-collapse, a calm normal-morning triage, and any scenario
+ * added later — while this runner's job (prep, pace, one-at-a-time) stays the same.
  *
- * <p>It composes existing machinery rather than reimplementing any of it: {@link ThunderclapScript}
+ * <p>It composes existing machinery rather than reimplementing any of it: a {@link Scenario}
  * builds the emails, {@link AnalyzeService} runs each through the <em>same live pipeline</em> every
  * other surface uses (so each decision is a real backend signal and publishes onto the live SSE
  * stream), and a shadow policy is designated up front so the shadow comparison records during the
@@ -39,8 +41,10 @@ public class ScenarioService {
      */
     private static final double SHADOW_DELTA = 0.10;
 
+    private final ScenarioCatalog catalog;
     private final AnalyzeService analyzeService;
     private final PolicyRepository policies;
+    private final ActiveCalibrator calibrator;
     private final ScenarioDispatcher dispatcher;
     private final ScenarioProperties properties;
     private final Clock clock;
@@ -53,13 +57,17 @@ public class ScenarioService {
 
     @Autowired
     public ScenarioService(
+            ScenarioCatalog catalog,
             AnalyzeService analyzeService,
             PolicyRepository policies,
+            ActiveCalibrator calibrator,
             ScenarioDispatcher dispatcher,
             ScenarioProperties properties,
             Clock clock) {
+        this.catalog = catalog;
         this.analyzeService = analyzeService;
         this.policies = policies;
+        this.calibrator = calibrator;
         this.dispatcher = dispatcher;
         this.properties = properties;
         this.clock = clock;
@@ -73,22 +81,38 @@ public class ScenarioService {
      * @throws IllegalStateException    if a scenario is already running (→ 409)
      */
     public ScenarioRun start(String name, Long seed) {
-        if (!ThunderclapScript.NAME.equals(name)) {
-            throw new IllegalArgumentException("unknown scenario: " + name);
-        }
+        Scenario scenario = catalog.find(name)
+                .orElseThrow(() -> new IllegalArgumentException("unknown scenario: " + name));
         if (!running.compareAndSet(false, true)) {
             throw new IllegalStateException("a scenario is already running");
         }
         try {
             long resolvedSeed = seed != null ? seed : properties.defaultSeed();
-            List<ScenarioEmail> script = ThunderclapScript.build(resolvedSeed);
+            List<ScenarioEmail> script = scenario.build(resolvedSeed);
+            ensureCalibrated();
             String shadowVersion = ensureShadowPolicy();
             dispatcher.dispatch(() -> runToCompletion(script));
-            return new ScenarioRun(name, script.size(), resolvedSeed, shadowVersion);
+            return new ScenarioRun(scenario.name(), script.size(), resolvedSeed, shadowVersion);
         } catch (RuntimeException e) {
             // Prep failed before the loop was handed off — release the guard so the demo isn't wedged.
             running.set(false);
             throw e;
+        }
+    }
+
+    /**
+     * Ensures the fusion stage will actually run for this demo. Fusion refuses to combine a raw model
+     * score with reputation until a calibration is installed (story 04.04), and nothing installs one at
+     * startup — so on a fresh system every model-route email is a provisional ALLOW and the scenario
+     * could never turn hostile nor plot a trust curve. If no calibration is present we install the
+     * identity so the model's own probabilities are fused as-is; an operator's real calibration, if
+     * any, is respected and left untouched (the same "prep the world, don't clobber it" stance as
+     * {@link #ensureShadowPolicy()}).
+     */
+    private void ensureCalibrated() {
+        if (!calibrator.isCalibrated()) {
+            calibrator.install(ProbabilityCalibrator.identity());
+            log.info("scenario: no calibration installed; installed identity so the fusion stage runs");
         }
     }
 

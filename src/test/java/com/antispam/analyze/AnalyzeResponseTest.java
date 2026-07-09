@@ -55,7 +55,7 @@ class AnalyzeResponseTest {
 
     @Test
     void surfaces_the_llm_cost_on_an_llm_routed_row_for_the_cost_meter() {
-        // The Abuse Lab cost meter (story 12.04) ticks up with real per-decision spend, so the
+        // The Living Spam Classifier Lab cost meter (story 12.04) ticks up with real per-decision spend, so the
         // response projects the LLM call's cost recorded on the row (story 05.02). It rides the
         // same live feed every card does — no separate cost endpoint.
         Classification classification = new Classification(

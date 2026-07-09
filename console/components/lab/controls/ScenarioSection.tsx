@@ -5,17 +5,31 @@ import { Icon } from "@/components/ui/icon";
 import { ApplyStatusChip, type ApplyStatus } from "@/components/lab/controls/ApplyStatusChip";
 
 /**
- * The scenario trigger (story 12.05): the single control action that runs the thunderclap end-to-end.
- * Picking a scenario and pressing Run posts to the Java runner, which injects a scripted warm-up →
- * mutated-attack sequence into the live pipeline — so the centre stream and story panel animate the
- * beats (reputation rise then collapse, the LLM engaging, the cost meter ticking, the shadow diff)
+ * The scenario trigger (story 12.05): the single control action that runs a scripted scenario
+ * end-to-end. Picking a scenario and pressing Run posts to the Java runner, which injects the
+ * scenario's emails into the live pipeline — so the centre stream and story panel animate the beats
  * from real backend decisions, not a scripted animation.
  *
- * <p>It owns no logic of its own: like the other rail controls it reports the selected scenario up to
- * {@code ControlsRail} via {@code onStart} and renders the shared apply-status acknowledgement.
+ * <p>Scenarios are shown by a plain-language title and a one-line description so it's clear what each
+ * one demonstrates; the runner is addressed by the stable id underneath. It owns no logic of its own:
+ * like the other rail controls it reports the selected scenario id up to {@code ControlsRail} via
+ * {@code onStart} and renders the shared apply-status acknowledgement. The ids here mirror the Java
+ * scenario catalog (the runner rejects an unknown one with a 400).
  */
-// The scenarios the runner knows. Shown by their raw id — the lab reads as technical on purpose.
-const SCENARIOS = ["sender_warms_up_then_attacks"] as const;
+const SCENARIOS = [
+  {
+    id: "sender_warms_up_then_attacks",
+    title: "A trusted sender turns hostile",
+    description:
+      "A sender earns trust with normal, authenticated mail — then that same account is compromised and blasts phishing. Watch the trust curve climb, then collapse as the attack is caught and blocked.",
+  },
+  {
+    id: "a_normal_morning",
+    title: "A normal morning",
+    description:
+      "A routine inbox: a couple of genuine emails and a newsletter sail through while two obvious scams are stopped. The everyday split — proof the system isn't trigger-happy.",
+  },
+] as const;
 
 export function ScenarioSection({
   onStart,
@@ -24,8 +38,10 @@ export function ScenarioSection({
   onStart: (scenario: string) => void;
   status: ApplyStatus;
 }) {
-  const [selected, setSelected] = useState<string>(SCENARIOS[0]);
+  const [selected, setSelected] = useState<string>(SCENARIOS[0].id);
   const running = status === "saving";
+  const description =
+    SCENARIOS.find((s) => s.id === selected)?.description ?? "";
 
   return (
     <section className="flex flex-col gap-2" data-testid="scenario-control">
@@ -42,9 +58,9 @@ export function ScenarioSection({
         disabled={running}
         className="w-full rounded-md border border-outline/60 bg-surface-container px-3 py-2 text-body-md text-on-surface disabled:opacity-60"
       >
-        {SCENARIOS.map((id) => (
-          <option key={id} value={id}>
-            {id}
+        {SCENARIOS.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.title}
           </option>
         ))}
       </select>
@@ -60,9 +76,7 @@ export function ScenarioSection({
         {running ? "Running…" : "Run scenario"}
       </button>
 
-      <p className="text-label-md text-on-surface-variant">
-        Drives the full thunderclap through the live pipeline — watch the curve collapse and the LLM engage.
-      </p>
+      <p className="text-label-md text-on-surface-variant">{description}</p>
     </section>
   );
 }

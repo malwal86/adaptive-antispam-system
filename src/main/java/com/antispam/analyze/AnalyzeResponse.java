@@ -10,7 +10,7 @@ import java.util.UUID;
  * {@code POST /analyze} (and {@code GET /analyze/{emailId}}) response: the verdict
  * a viewer sees on the result card.
  *
- * <p>This is the analyzer contract the Abuse Lab Console (Epic 12) builds on, so
+ * <p>This is the analyzer contract the Living Spam Classifier Lab Console (Epic 12) builds on, so
  * it carries everything a card renders: the colour-coding {@code tier}, the
  * reason chips, the route that decided, the latency, and a grounded one-line
  * {@code explanation}. The {@code tier} and {@code routeUsed} are emitted as the
@@ -53,7 +53,7 @@ import java.util.UUID;
  * @param policyVersion    the active policy the decision was made under, or {@code null} for a
  *                         pre-04.05 decision
  * @param llmCostUsd       the USD cost of the LLM call on an {@code llm}-route row (story 05.02), or
- *                         {@code null} on any verdict that did not call the LLM. The Abuse Lab cost
+ *                         {@code null} on any verdict that did not call the LLM. The Living Spam Classifier Lab cost
  *                         meter (story 12.04) sums this across the live feed to tick up real spend,
  *                         so it binds to the same decisions every card does rather than a separate
  *                         endpoint
