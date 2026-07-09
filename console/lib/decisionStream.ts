@@ -1,4 +1,4 @@
-// Live decision transport for the Abuse Lab Console (story 12.01).
+// Live decision transport for the Living Spam Classifier Lab Console (story 12.01).
 //
 // The console is a *thin* client: it subscribes to the Java API's Server-Sent
 // Events feed and renders the decisions it receives — it never reimplements

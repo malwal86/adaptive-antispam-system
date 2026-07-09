@@ -4,7 +4,7 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Console-facing web config, bound from {@code antispam.console}. The Abuse Lab
+ * Console-facing web config, bound from {@code antispam.console}. The Living Spam Classifier Lab
  * Console (and the 01.05 analyzer) is a separate Next.js service that calls this
  * API cross-origin, so its origin(s) must be allowed for CORS.
  *

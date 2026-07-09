@@ -18,17 +18,29 @@ package com.antispam.scenario;
  *
  * <p>The beat is provenance, not control flow: every email travels the same live pipeline. The tag is
  * what lets a test (and a human watching the demo) say which moment a given decision belongs to.
+ *
+ * <p>The last three roles — {@link #LEGIT}, {@link #NEWSLETTER}, {@link #SPAM} — belong to the
+ * calmer "a normal morning" scenario (routine inbox triage), not the thunderclap; they read the same
+ * way in any scenario. A scenario stamps each email's ingest source explicitly (see
+ * {@link ScenarioEmail}), so a beat's own {@link #source()} is only the thunderclap default.
  */
 public enum Beat {
     WARMUP,
     ATTACK,
     SPOOF,
-    MISCONFIGURED_LEGIT;
+    MISCONFIGURED_LEGIT,
+
+    /** A genuinely legitimate, authenticated personal or transactional email — plainly benign. */
+    LEGIT,
+    /** Authenticated bulk mail (a newsletter/marketing blast) — benign volume, not abuse. */
+    NEWSLETTER,
+    /** Obvious junk from an unknown, unauthenticated sender — the clear-cut block. */
+    SPAM;
 
     /**
-     * The ingest {@code source} provenance recorded for an email of this beat, e.g. {@code
-     * "thunderclap-warmup"} — distinct per beat so the scenario's emails are auditable apart from
-     * ordinary traffic and apart from each other.
+     * The thunderclap scenario's default ingest {@code source} for an email of this beat, e.g.
+     * {@code "thunderclap-warmup"}. Other scenarios pass their own source to {@link ScenarioEmail}
+     * rather than calling this, so their mail is auditable apart from the thunderclap and each other.
      */
     public String source() {
         return "thunderclap-" + name().toLowerCase().replace('_', '-');

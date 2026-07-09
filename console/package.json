@@ -2,7 +2,7 @@
   "name": "living-antispam-console",
   "version": "0.1.0",
   "private": true,
-  "description": "Abuse Lab Console — single-email analyzer (story 01.05), the seed of Epic 12.",
+  "description": "Living Spam Classifier Lab Console — single-email analyzer (story 01.05), the seed of Epic 12.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

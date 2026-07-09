@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * Streams decisions to the Abuse Lab Console live over Server-Sent Events (story 12.01).
+ * Streams decisions to the Living Spam Classifier Lab Console live over Server-Sent Events (story 12.01).
  *
  * <p>A browser {@code EventSource} reconnects on its own and replays the id of the last event it
  * saw via the standard {@code Last-Event-ID} header; we hand that to {@link DecisionStream} so the

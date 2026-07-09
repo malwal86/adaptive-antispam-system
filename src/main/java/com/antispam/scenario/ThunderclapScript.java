@@ -126,18 +126,32 @@ public final class ThunderclapScript {
     }
 
     private static ScenarioEmail attack(int index, Random rng) {
-        // A near-duplicate campaign: one fixed phishing template, mutated per variant (the ref token and
-        // a swapped urgency phrase) so the bodies differ yet cluster — what burst/campaign detection sees.
-        String[] urgency = {"within 24 hours", "immediately", "before end of day", "right away"};
+        // The warmed sender's account, now compromised. The mail still AUTHENTICATES — DMARC stays
+        // aligned, so an auth check alone waves it through and the earned reputation is on the line —
+        // but the content is unmistakable phishing: a raw-IP credential-harvesting link, a punycode
+        // look-alike link, an off-domain Reply-To, and shouty urgency. Those are exactly the
+        // structural tells the content model scores high, so the reputation curve that rose now
+        // collapses despite the passing auth (the demo's whole point). A near-duplicate campaign:
+        // mutated per variant (the ref token and a swapped urgency phrase) so the bodies differ yet
+        // cluster — what burst/campaign detection sees.
+        String[] urgency = {"within 24 HOURS", "IMMEDIATELY", "before END OF DAY", "RIGHT AWAY"};
+        String phrase = urgency[index % urgency.length];
         String token = ref(rng);
-        String subject = "Action required: verify your account " + urgency[index % urgency.length];
-        String link = "http://acme-mail-security.example/verify?ref=" + token;
-        String body = "Dear customer,\n\nWe detected unusual activity on your account. You must confirm "
-                + "your identity " + urgency[index % urgency.length] + " or access will be suspended.\n\n"
-                + "Verify here: " + link + "\n\nAccount security, Acme";
+        String subject = "URGENT: your ACME account will be SUSPENDED — VERIFY " + phrase + "!";
+        // A dotted-quad host (never a real Acme URL) with a long, obfuscated query — the classic tell.
+        String ipLink = "http://198.51.100.42/acme/secure/session/verify?ref=" + token
+                + "&id=" + ref(rng) + "&continue=account-security-settings-review";
+        // A punycode look-alike domain, the second phishing tell in the same message.
+        String punyLink = "http://xn--acme-secure-login.example/confirm?ref=" + token;
+        // Replies go off-domain to the attacker's collection address, not back to the warmed sender.
+        String replyTo = "account-recovery@acme-security-alerts.example";
+        String body = "SECURITY ALERT!! We detected unusual activity on your account and access will be "
+                + "SUSPENDED " + phrase + ".\n\nConfirm your identity NOW to avoid losing access: " + ipLink
+                + "\n\nMobile users, use this secure link instead: " + punyLink
+                + "\n\nDO NOT IGNORE THIS MESSAGE.\n\nAccount Security, ACME";
         // The burst arrives clustered around the present moment.
         Instant date = BASE.plusSeconds(index);
-        return email(Beat.ATTACK, "alerts@" + WARM_DOMAIN, subject, body, AuthResult.PASS, date);
+        return email(Beat.ATTACK, "alerts@" + WARM_DOMAIN, replyTo, subject, body, AuthResult.PASS, date);
     }
 
     private static ScenarioEmail spoof(Random rng) {
@@ -182,9 +196,16 @@ public final class ThunderclapScript {
 
     private static ScenarioEmail email(Beat beat, String from, String subject, String body,
             AuthResult auth, Instant date) {
+        return email(beat, from, null, subject, body, auth, date);
+    }
+
+    private static ScenarioEmail email(Beat beat, String from, String replyTo, String subject,
+            String body, AuthResult auth, Instant date) {
         String authResults = "mx.inbox.example; spf=" + auth.spf + "; dkim=" + auth.dkim
                 + "; dmarc=" + auth.dmarc;
+        String replyToHeader = replyTo == null ? "" : "Reply-To: " + replyTo + "\r\n";
         String message = "From: " + from + "\r\n"
+                + replyToHeader
                 + "To: " + INBOX + "\r\n"
                 + "Subject: " + subject + "\r\n"
                 + "Date: " + RFC_822_DATE.format(ZonedDateTime.ofInstant(date, ZoneOffset.UTC)) + "\r\n"

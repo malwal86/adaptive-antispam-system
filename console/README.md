@@ -1,6 +1,6 @@
-# Abuse Lab Console
+# Living Spam Classifier Lab Console
 
-The single-email analyzer (story **01.05**) and the seed of the **Abuse Lab
+The single-email analyzer (story **01.05**) and the seed of the **Living Spam Classifier Lab
 Console** (Epic 12). A thin Next.js client over the Java API: paste or pick an
 email and see the system's decision — tier (colour-coded), reason chips, route,
 latency, and a grounded explanation — as an animated result card.
@@ -56,7 +56,7 @@ URL is passed as a build arg (see `Dockerfile` / `render.yaml`).
 ```
 app/
   layout.tsx        Roboto + Material Symbols, M3 theme
-  page.tsx          Abuse Lab header + tier legend + <Analyzer/>
+  page.tsx          Living Spam Classifier Lab header + tier legend + <Analyzer/>
   globals.css       Tailwind + M3 tonal tokens, reduced-motion
 components/
   Analyzer.tsx      paste box + sample picker + submit + result/empty/error

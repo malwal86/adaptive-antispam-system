@@ -1,4 +1,4 @@
-// Live aggregate signals for the Abuse Lab story panel (story 12.04).
+// Live aggregate signals for the Living Spam Classifier Lab story panel (story 12.04).
 //
 // The right rail reads the same decision feed the centre stream does, but where the centre keeps a
 // bounded, newest-first list of cards, the story panel needs *monotonic* aggregates — a route mix
