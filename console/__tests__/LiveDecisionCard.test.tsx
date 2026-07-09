@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { LiveDecisionCard } from "@/components/lab/LiveDecisionCard";
 import type { AnalyzeResponse } from "@/lib/api";
 import type { StreamItem } from "@/lib/decisionStream";
@@ -97,5 +97,38 @@ describe("LiveDecisionCard", () => {
     render(<LiveDecisionCard item={card({ tier: "allow", routeUsed: "model", reasonCodes: [] }, true)} />);
     expect(screen.getByTestId("card-sender")).toHaveTextContent(/d7db7c1d/i);
     expect(screen.queryByTestId("card-subject")).not.toBeInTheDocument();
+  });
+
+  it("is a button that reports its selection when onSelect is given", () => {
+    const onSelect = vi.fn();
+    render(
+      <LiveDecisionCard
+        item={card({ tier: "allow", routeUsed: "model", reasonCodes: [], sender: "Mom" }, true)}
+        onSelect={onSelect}
+      />,
+    );
+    const el = screen.getByTestId("live-decision-card");
+    expect(el).toHaveAttribute("role", "button");
+    fireEvent.click(el);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens on keyboard activation (Enter / Space)", () => {
+    const onSelect = vi.fn();
+    render(
+      <LiveDecisionCard
+        item={card({ tier: "allow", routeUsed: "model", reasonCodes: [], sender: "Mom" }, true)}
+        onSelect={onSelect}
+      />,
+    );
+    const el = screen.getByTestId("live-decision-card");
+    fireEvent.keyDown(el, { key: "Enter" });
+    fireEvent.keyDown(el, { key: " " });
+    expect(onSelect).toHaveBeenCalledTimes(2);
+  });
+
+  it("is inert (no button role) when no onSelect is provided", () => {
+    render(<LiveDecisionCard item={card({ tier: "allow", routeUsed: "model", reasonCodes: [] }, true)} />);
+    expect(screen.getByTestId("live-decision-card")).not.toHaveAttribute("role", "button");
   });
 });

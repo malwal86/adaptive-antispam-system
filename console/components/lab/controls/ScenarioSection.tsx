@@ -27,7 +27,7 @@ const SCENARIOS = [
     id: "sender_warms_up_then_attacks",
     title: "A trusted sender turns hostile",
     description:
-      "A sender earns trust with normal, authenticated mail — then that same account is compromised and blasts phishing. Watch the trust curve climb, then collapse as the attack is caught and blocked.",
+      "A sender earns trust with normal, authenticated mail, then that same account is compromised and blasts phishing. Watch the trust curve climb, then collapse as the attack is caught and blocked.",
   },
 ] as const;
 

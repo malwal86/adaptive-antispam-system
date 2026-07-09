@@ -171,7 +171,7 @@ function EmptyState() {
     >
       <Icon name="frame_inspect" className="text-[40px] opacity-70" />
       <p className="text-body-md">
-        Paste an email or pick a sample — the decision, its tier, reason codes, route, and
+        Paste an email or pick a sample. The decision, its tier, reason codes, route, and
         latency appear here.
       </p>
     </div>

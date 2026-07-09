@@ -7,7 +7,7 @@ import { ReasonChip } from "@/components/ReasonChip";
 import type { AnalyzeResponse } from "@/lib/api";
 import { EMPHASIZED_EASE } from "@/lib/animation";
 import { formatClockTime, shortId } from "@/lib/format";
-import { TIERS } from "@/lib/tiers";
+import { routeLabel, TIERS } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
 /**
@@ -121,10 +121,4 @@ export function ResultCard({ result }: { result: AnalyzeResponse }) {
       </Card>
     </motion.div>
   );
-}
-
-function routeLabel(route: string): string {
-  if (route === "hard_rule") return "Hard rule";
-  if (route === "model") return "Model";
-  return route;
 }

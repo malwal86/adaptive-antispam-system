@@ -8,7 +8,7 @@ import { StoryPanel } from "@/components/lab/story/StoryPanel";
 import { useDecisionStream } from "@/lib/useDecisionStream";
 
 /**
- * The Living Spam Classifier Lab console shell (story 12.01): a three-pane layout — controls,
+ * The Spam Classifier console shell (story 12.01): a three-pane layout — controls,
  * the live decision stream, the story panel — over the Java API's SSE feed.
  *
  * <p>The shell + transport landed in 12.01; the left rail's live controls in 12.02; the centre's
@@ -27,7 +27,7 @@ export function LabConsole() {
             <Icon name="biotech" filled className="text-[24px]" />
           </span>
           <div>
-            <h1 className="text-title-lg font-medium tracking-tight">Living Spam Classifier Lab</h1>
+            <h1 className="text-title-lg font-medium tracking-tight">Spam Classifier</h1>
             <p className="text-label-md text-on-surface-variant">
               Live decision stream · Living Anti-Spam System
             </p>
