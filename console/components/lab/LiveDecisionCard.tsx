@@ -5,35 +5,28 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Icon } from "@/components/ui/icon";
 import { EMPHASIZED_EASE } from "@/lib/animation";
 import { isPending, type StreamItem } from "@/lib/decisionStream";
-import { shortId } from "@/lib/format";
-import { TIERS, outcomeFor, plainReason } from "@/lib/tiers";
+import { formatClockTime, shortId } from "@/lib/format";
+import { TIERS, reasonLabel, routeLabel } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
 /**
- * One decision in the live stream, rendered as the email it is (story 12.03): who it's from, its
- * subject, a one-line preview, and — in plain language — where it landed and why. The point is that
- * anyone, technical or not, can read a card at a glance: a green "Delivered to inbox" or a red "Moved
- * to spam", not a hash, a latency, and a reason code.
+ * One decision in the live stream, as a card that flips to its tier (story 12.03).
  *
  * <p>The card is keyed by email upstream, so an uncertain message that is first withheld
- * (quarantine-pending) and then resolved by the LLM (story 05.06) is this <em>same</em> card flipping
- * in place: the outcome badge rotates from "Checking…" to the final inbox/spam verdict, the accent
- * colour eases across, and the reason updates — never a second card and never a retraction. While
- * pending it shows a slow-pulsing "checking" affordance. Reduced-motion collapses every motion to an
- * instant, legible state.
+ * (quarantine-pending) and then resolved by the LLM (story 05.06) is this <em>same</em> card
+ * flipping in place: the tier badge rotates to the new tier, the accent colour eases across,
+ * and the reason chips fade in — never a second card and never a retraction. While pending it
+ * shows a slow-pulsing "resolving" affordance (indeterminate progress, per the guidelines).
+ * Reduced-motion collapses every motion to an instant, legible state.
+ *
+ * <p>When {@code onSelect} is given the whole card becomes a button that opens the email's detail
+ * view (the modal in {@link EmailDetail}); without it the card is inert display.
  */
 export function LiveDecisionCard({ item, onSelect }: { item: StreamItem; onSelect?: () => void }) {
   const reduceMotion = useReducedMotion();
   const { decision, resolved } = item;
   const tier = TIERS[decision.tier];
   const pending = isPending(item);
-  const outcome = outcomeFor(decision.tier, decision.delivered);
-  const reason = plainReason(decision.reasonCodes, outcome.folder, decision.explanation);
-
-  // The envelope, when the feed enriched it (scenario mail); otherwise fall back to a short id so the
-  // card is never blank for ordinary traffic.
-  const sender = decision.sender ?? shortId(decision.emailId);
-  const subject = decision.subject;
 
   // When selectable, the whole card is a button that opens the email's detail view. Enter/Space
   // activate it like any button; a hover state-layer says "this is clickable" (guidelines Part VIII).
@@ -42,7 +35,7 @@ export function LiveDecisionCard({ item, onSelect }: { item: StreamItem; onSelec
         role: "button" as const,
         tabIndex: 0,
         "aria-haspopup": "dialog" as const,
-        "aria-label": `View details for ${sender}${subject ? `: ${subject}` : ""}`,
+        "aria-label": `View details for the ${tier.label} decision ${shortId(decision.emailId)}`,
         onClick: onSelect,
         onKeyDown: (event: KeyboardEvent) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -61,20 +54,20 @@ export function LiveDecisionCard({ item, onSelect }: { item: StreamItem; onSelec
       transition={{ duration: reduceMotion ? 0 : 0.24, ease: EMPHASIZED_EASE }}
       data-testid="live-decision-card"
       data-tier={decision.tier}
-      data-folder={outcome.folder}
       data-pending={pending ? "true" : undefined}
       data-resolved={resolved ? "true" : undefined}
       className={cn(
         "flex items-start gap-3 rounded-md border bg-surface-container/60 p-4 ring-1 transition-colors duration-300",
-        pending ? "border-tier-quarantine/50 ring-tier-quarantine/40" : cn(tier.accentBorder, tier.ring),
+        tier.accentBorder,
+        tier.ring,
         onSelect &&
           "cursor-pointer hover:bg-surface-variant/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
       )}
     >
-      {/* Outcome badge: rotates from "checking" to the final inbox/spam icon when resolved. */}
+      {/* Tier badge: rotates to the new tier on a resolution (cross-fade + flip, ≤300ms). */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
-          key={pending ? "checking" : decision.tier}
+          key={decision.tier}
           initial={{ opacity: 0, rotateX: reduceMotion ? 0 : 90 }}
           animate={{ opacity: 1, rotateX: 0 }}
           exit={{ opacity: 0, rotateX: reduceMotion ? 0 : -90 }}
@@ -82,52 +75,67 @@ export function LiveDecisionCard({ item, onSelect }: { item: StreamItem; onSelec
           style={{ transformPerspective: 420 }}
           className={cn(
             "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md bg-surface/50",
-            pending ? "text-tier-quarantine" : tier.accentText,
+            tier.accentText,
           )}
         >
-          <Icon name={pending ? "hourglass_top" : outcome.icon} filled className="text-[22px]" />
+          <Icon name={tier.icon} filled className="text-[22px]" />
         </motion.span>
       </AnimatePresence>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        {/* From · Subject — the card reads like a line in an inbox. */}
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-title-sm font-medium text-on-surface" data-testid="card-sender">
-            {sender}
-          </span>
-          {subject && (
-            <span className="truncate text-body-md text-on-surface-variant" data-testid="card-subject">
-              {subject}
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className={cn("text-title-sm font-medium transition-colors duration-300", tier.accentText)}
+              data-testid="tier-label"
+            >
+              {tier.label}
             </span>
-          )}
+            {pending && <PendingChip reduceMotion={reduceMotion} />}
+          </span>
+          <span className="flex shrink-0 items-center gap-3 text-label-md text-on-surface-variant">
+            <span className="inline-flex items-center gap-1" data-testid="route-used">
+              <Icon name={routeIcon(decision.routeUsed)} className="text-[16px] leading-none" />
+              {routeLabel(decision.routeUsed)}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Icon name="timer" className="text-[16px] leading-none" />
+              {decision.latencyMs} ms
+            </span>
+          </span>
         </div>
 
-        {decision.preview && (
-          <p className="line-clamp-2 text-label-md text-on-surface-variant/80" data-testid="card-preview">
-            {decision.preview}
-          </p>
+        {decision.reasonCodes.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: reduceMotion ? 0 : 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+            className={cn("flex flex-wrap gap-1.5", tier.accentText)}
+          >
+            {decision.reasonCodes.map((code) => (
+              <span
+                key={code}
+                data-testid="reason-chip"
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-label-md",
+                  tier.accentBorder,
+                  tier.containerBg,
+                )}
+              >
+                {reasonLabel(code)}
+              </span>
+            ))}
+          </motion.div>
         )}
 
-        {/* Outcome + plain reason. While pending, the outcome reads "Checking…". */}
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-          {pending ? (
-            <CheckingChip reduceMotion={reduceMotion} />
-          ) : (
-            <span
-              data-testid="card-outcome"
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-label-md font-medium",
-                tier.accentText,
-                tier.accentBorder,
-                tier.containerBg,
-              )}
-            >
-              <Icon name={outcome.folder === "inbox" ? "inbox" : "report"} className="text-[14px] leading-none" />
-              {outcome.verb}
-            </span>
-          )}
-          <span className="text-label-md text-on-surface-variant" data-testid="card-reason">
-            {pending ? "Taking a closer look at this one…" : reason}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label-md text-on-surface-variant">
+          <span className="inline-flex items-center gap-1">
+            <Icon name="fingerprint" className="text-[16px] leading-none" />
+            {shortId(decision.emailId)}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Icon name="schedule" className="text-[16px] leading-none" />
+            {formatClockTime(decision.decidedAt)}
           </span>
         </div>
       </div>
@@ -135,17 +143,23 @@ export function LiveDecisionCard({ item, onSelect }: { item: StreamItem; onSelec
   );
 }
 
-/** The quarantine-pending affordance: a slow pulse says "held, checking" without a spinner. */
-function CheckingChip({ reduceMotion }: { reduceMotion: boolean | null }) {
+/** The quarantine-pending affordance: a slow pulse says "withheld, resolving" without a spinner. */
+function PendingChip({ reduceMotion }: { reduceMotion: boolean | null }) {
   return (
     <motion.span
       data-testid="pending-indicator"
       animate={reduceMotion ? undefined : { opacity: [0.6, 1, 0.6] }}
       transition={reduceMotion ? undefined : { duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-tier-quarantine/40 bg-tier-quarantine-container px-2 py-0.5 text-label-md font-medium text-tier-quarantine"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-tier-quarantine/40 bg-tier-quarantine-container px-2 py-0.5 text-label-md text-tier-quarantine"
     >
       <Icon name="hourglass_top" className="text-[14px] leading-none" />
-      Checking…
+      Resolving…
     </motion.span>
   );
+}
+
+function routeIcon(route: string): string {
+  if (route === "hard_rule") return "gavel";
+  if (route === "llm") return "smart_toy";
+  return "memory";
 }

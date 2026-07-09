@@ -174,7 +174,7 @@ test("renders three panes and streams decisions in live, newest-first", async ({
   await expect(cards.nth(1)).toHaveAttribute("data-tier", "block");
 });
 
-test("each card reads like email: inbox vs spam, with a plain-language reason", async ({ page }) => {
+test("each card's route indicator and reason chips reflect how it was decided", async ({ page }) => {
   await stubStream(page);
   await stubControls(page);
   await page.goto("/");
@@ -182,15 +182,12 @@ test("each card reads like email: inbox vs spam, with a plain-language reason", 
   const cards = page.getByTestId("live-decision-card");
   await expect(cards).toHaveCount(2);
 
-  // Newest-first: the allowed mail lands in the inbox, the blocked mail is moved to spam.
-  await expect(cards.first()).toHaveAttribute("data-folder", "inbox");
-  await expect(cards.first().getByTestId("card-outcome")).toContainText("Delivered to inbox");
-
+  // Newest-first: the model-routed allow leads, the hard-rule block follows.
+  // (route-used also carries its Material Symbol glyph, so match on contained text.)
+  await expect(cards.first().getByTestId("route-used")).toContainText("Model");
   const blockCard = cards.nth(1);
-  await expect(blockCard).toHaveAttribute("data-folder", "spam");
-  await expect(blockCard.getByTestId("card-outcome")).toContainText("Moved to spam");
-  // The reason is plain English, not the raw reason code.
-  await expect(blockCard.getByTestId("card-reason")).toContainText(/scam site/i);
+  await expect(blockCard.getByTestId("route-used")).toContainText("Hard rule");
+  await expect(blockCard.getByTestId("reason-chip")).toContainText("Known-bad URL");
 });
 
 test("a quarantine-pending email resolves in place — one card, flipped, never retracted", async ({
