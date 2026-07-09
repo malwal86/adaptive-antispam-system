@@ -61,6 +61,10 @@ antispam:
     url-denylist:
       - malware.example
       - phishing.test
+      # Mirror the everyday-inbox demo scam hosts (see application.yml) so the scenario IT sees the
+      # same hard-rule wiring the real deployment does.
+      - secure-bank-verify.example
+      - prize-claim-center.example
     high-value-brands:
       - name: paypal
         domain: paypal.com
