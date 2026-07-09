@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.antispam.decision.Classification;
 import com.antispam.decision.ClassificationRepository;
 import com.antispam.decision.Decision;
+import com.antispam.decision.DecisionMadeEvent;
 import com.antispam.decision.DecisionOutcome;
 import com.antispam.decision.ModelScores;
 import com.antispam.decision.ReasonCode;
@@ -33,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * The async resolver's orchestration (story 05.06): a successful verdict appends a promoted/confirmed
@@ -47,6 +49,7 @@ class QuarantinePendingServiceTest {
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
     private final LlmMeter meter = new LlmMeter(registry);
     private final HardRuleCircuitBreaker breaker = new HardRuleCircuitBreaker();
+    private final ApplicationEventPublisher events = org.mockito.Mockito.mock(ApplicationEventPublisher.class);
     private final ExecutorService slaExecutor = Executors.newCachedThreadPool();
 
     private final Email email = TestEmails.bodyContaining("ambiguous content");
@@ -66,7 +69,7 @@ class QuarantinePendingServiceTest {
         when(repository.save(any(), any(), any(), any(), any())).thenAnswer(this::echo);
         return new QuarantinePendingService(
                 llm, repository, breaker, meter, new QuarantinePendingProperties(sla),
-                Runnable::run, slaExecutor);
+                Runnable::run, slaExecutor, events);
     }
 
     private Classification echo(org.mockito.invocation.InvocationOnMock inv) {
@@ -141,6 +144,46 @@ class QuarantinePendingServiceTest {
         assertThat(outcome.getValue().decision()).isEqualTo(Decision.QUARANTINE); // conservative bias
         assertThat(cost.getValue()).isNull(); // no call was billed
         assertThat(registry.get(LlmMeter.RESOLUTION).tag("state", "degraded").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void a_resolution_publishes_the_resolved_decision_to_the_live_stream() {
+        // Regression: the async resolution appended the resolved row to the DB but never published a
+        // DecisionMadeEvent, so the console's live stream (its only verdict source) stayed frozen on
+        // the provisional QUARANTINE — every routed email appeared to "hang" in quarantine forever.
+        when(llm.classify(any(), anyList())).thenReturn(verdict(Verdict.LEGITIMATE));
+
+        service().resolve(request());
+
+        ArgumentCaptor<DecisionMadeEvent> event = ArgumentCaptor.forClass(DecisionMadeEvent.class);
+        verify(events).publishEvent(event.capture());
+        // The published row is the resolved verdict (promoted to ALLOW), not the pending quarantine.
+        assertThat(event.getValue().classification().emailId()).isEqualTo(email.id());
+        assertThat(event.getValue().classification().decision()).isEqualTo(Decision.ALLOW);
+        assertThat(event.getValue().classification().route()).isEqualTo(RouteUsed.LLM);
+    }
+
+    @Test
+    void a_degraded_resolution_still_publishes_so_the_card_leaves_pending() {
+        when(llm.classify(any(), anyList())).thenReturn(LlmOutcome.notAttempted());
+
+        service().resolve(request());
+
+        ArgumentCaptor<DecisionMadeEvent> event = ArgumentCaptor.forClass(DecisionMadeEvent.class);
+        verify(events).publishEvent(event.capture());
+        assertThat(event.getValue().classification().decision()).isEqualTo(Decision.QUARANTINE); // conservative
+    }
+
+    @Test
+    void a_publish_failure_never_fails_the_resolution() {
+        // The row is already persisted before publishing; a stream hiccup must not throw out of resolve.
+        when(llm.classify(any(), anyList())).thenReturn(verdict(Verdict.LEGITIMATE));
+        org.mockito.Mockito.doThrow(new RuntimeException("stream down"))
+                .when(events).publishEvent(any(DecisionMadeEvent.class));
+
+        Classification row = service().resolve(request());
+
+        assertThat(row.decision()).isEqualTo(Decision.ALLOW); // resolution completed despite the failure
     }
 
     @Test
