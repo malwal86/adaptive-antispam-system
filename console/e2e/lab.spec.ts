@@ -174,7 +174,7 @@ test("renders three panes and streams decisions in live, newest-first", async ({
   await expect(cards.nth(1)).toHaveAttribute("data-tier", "block");
 });
 
-test("each card's route indicator and reason chips reflect how it was decided", async ({ page }) => {
+test("each card reads like email: inbox vs spam, with a plain-language reason", async ({ page }) => {
   await stubStream(page);
   await stubControls(page);
   await page.goto("/");
@@ -182,12 +182,15 @@ test("each card's route indicator and reason chips reflect how it was decided", 
   const cards = page.getByTestId("live-decision-card");
   await expect(cards).toHaveCount(2);
 
-  // Newest-first: the model-routed allow leads, the hard-rule block follows.
-  // (route-used also carries its Material Symbol glyph, so match on contained text.)
-  await expect(cards.first().getByTestId("route-used")).toContainText("Model");
+  // Newest-first: the allowed mail lands in the inbox, the blocked mail is moved to spam.
+  await expect(cards.first()).toHaveAttribute("data-folder", "inbox");
+  await expect(cards.first().getByTestId("card-outcome")).toContainText("Delivered to inbox");
+
   const blockCard = cards.nth(1);
-  await expect(blockCard.getByTestId("route-used")).toContainText("Hard rule");
-  await expect(blockCard.getByTestId("reason-chip")).toContainText("Known-bad URL");
+  await expect(blockCard).toHaveAttribute("data-folder", "spam");
+  await expect(blockCard.getByTestId("card-outcome")).toContainText("Moved to spam");
+  // The reason is plain English, not the raw reason code.
+  await expect(blockCard.getByTestId("card-reason")).toContainText(/scam site/i);
 });
 
 test("a quarantine-pending email resolves in place — one card, flipped, never retracted", async ({
@@ -241,9 +244,13 @@ test("the story panel reflects the attack: trust collapses, routing shifts to LL
   await expect(chart).toHaveAttribute("data-collapsing", "true");
   await expect(page.getByTestId("reputation-collapse")).toBeVisible();
 
-  // Route mix: the real rules/reputation/LLM split — two model warm-ups, three LLM attack decisions.
+  // Route mix ("How it decided"): the real rules/reputation/LLM split — two model warm-ups, three
+  // LLM attack decisions.
   await expect(page.getByTestId("route-count-reputation")).toHaveText("2");
   await expect(page.getByTestId("route-count-llm")).toHaveText("3");
+
+  // The cost and benchmark read-outs live under a "For the curious" disclosure — expand it first.
+  await page.getByText("For the curious", { exact: false }).click();
 
   // Cost meter: real summed spend (3 × $0.20) exhausts the $0.50 cap and the meter visibly halts.
   await expect(page.getByTestId("cost-spent")).toHaveText("$0.60");

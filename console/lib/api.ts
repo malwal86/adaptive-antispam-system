@@ -31,6 +31,20 @@ export interface AnalyzeResponse {
    * cost meter (story 12.04) sums it across the live feed to tick up real spend.
    */
   llmCostUsd?: number;
+  /**
+   * Whether the mail was delivered to the inbox (`allow`/`warn`) rather than withheld
+   * (`quarantine`/`block`) — the Inbox-vs-Spam framing the everyday-inbox cards read off.
+   */
+  delivered?: boolean;
+  /**
+   * The human-readable envelope, present only for synthetic scenario/demo mail (the live feed enriches
+   * scenario decisions but keeps ordinary traffic PII-free). {@link sender} is the friendly display
+   * name (else the address), {@link subject} the subject, {@link preview} a one-line body preview.
+   * When absent the card falls back to its id-only rendering.
+   */
+  sender?: string;
+  subject?: string;
+  preview?: string;
 }
 
 /** Item of GET /seed/samples (see SeedSampleResponse.java). */

@@ -49,7 +49,7 @@ export function ReputationChart({ series }: { series: TrustPoint[] }) {
   return (
     <div data-testid="reputation-chart" data-collapsing={collapsing ? "true" : undefined}>
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-label-md text-on-surface-variant">Sender trust (reputation-fused)</span>
+        <span className="text-label-md text-on-surface-variant">How much we trust the sender</span>
         <span
           className={cn(
             "tabular-nums text-label-md font-medium",

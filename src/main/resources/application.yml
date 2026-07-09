@@ -481,6 +481,11 @@ antispam:
       - malware.example
       - phishing.example
       - baddomain.test
+      # Scam look-alike hosts used by the "everyday inbox" demo scenario (NormalMorningScenario):
+      # a link to either is hard-ruled to BLOCK, so the fake-bank and prize scams are stopped
+      # decisively (no model, no LLM) rather than dwelling in quarantine-pending.
+      - secure-bank-verify.example
+      - prize-claim-center.example
     high-value-brands:
       - name: paypal
         domain: paypal.com

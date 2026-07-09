@@ -40,7 +40,7 @@ export function RouteMixBar({ stats }: { stats: StreamStats }) {
   return (
     <div data-testid="route-mix">
       <div className="mb-1.5 flex items-center justify-between text-label-md text-on-surface-variant">
-        <span>Route mix</span>
+        <span>How it decided</span>
         <span className="tabular-nums" data-testid="route-total">
           {stats.total} decided
         </span>

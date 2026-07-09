@@ -25,4 +25,43 @@ public interface Scenario {
      * @return the emails to inject, in order; never empty
      */
     List<ScenarioEmail> build(long seed);
+
+    /**
+     * Senders this scenario wants pre-warmed <em>before</em> its mail flows, so their first email
+     * lands as a confident, model-route decision rather than dwelling in the LLM's quarantine-pending
+     * queue. A brand-new sender's reputation is maximally uncertain, so the router escalates its mail
+     * to the LLM regardless of content ({@code NEW_SENDER_UNCERTAINTY}); seeding a few authenticated
+     * good signals drops that uncertainty below the routing band, so genuinely benign mail from a
+     * known-good sender is allowed instantly. The runner ({@link ScenarioService}) applies these as
+     * authenticated {@code GOOD} reputation before dispatching the script.
+     *
+     * <p>Default: none — a scenario whose whole point is unseen senders (the thunderclap's cold-start
+     * warm-up) overrides nothing and every sender stays new.
+     *
+     * @return the senders to pre-warm, or an empty list to warm none
+     */
+    default List<SenderWarmup> prewarm() {
+        return List.of();
+    }
+
+    /**
+     * A sender to seed with authenticated good reputation before a scenario runs.
+     *
+     * @param senderKey the sender identity as {@link com.antispam.event.SenderKey#of} derives it
+     *                  (the normalized, lower-cased From address, else the domain) — must match the
+     *                  scenario email's sender exactly, or the warm-up lands on a different key
+     * @param weight    how much good evidence to seed; one high-weight signal (≈20) is enough to
+     *                  drop the sender's uncertainty below the routing band in a single record
+     */
+    record SenderWarmup(String senderKey, double weight) {
+
+        public SenderWarmup {
+            if (senderKey == null || senderKey.isBlank()) {
+                throw new IllegalArgumentException("senderKey must not be blank");
+            }
+            if (weight <= 0) {
+                throw new IllegalArgumentException("weight must be positive but was " + weight);
+            }
+        }
+    }
 }

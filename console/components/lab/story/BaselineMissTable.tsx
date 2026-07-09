@@ -21,7 +21,7 @@ interface BaselineMissTableProps {
 export function BaselineMissTable({ misses, loading, error }: BaselineMissTableProps) {
   return (
     <div data-testid="baseline-miss-table">
-      <p className="mb-1.5 text-label-md text-on-surface-variant">Danger missed by baseline</p>
+      <p className="mb-1.5 text-label-md text-on-surface-variant">Scams an old-school filter would miss</p>
 
       {error ? (
         <p className="text-label-md text-tier-block" data-testid="baseline-miss-error">
