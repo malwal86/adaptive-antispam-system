@@ -18,7 +18,7 @@ export const TIERS: Record<Tier, TierMeta> = {
   allow: {
     label: "Ham",
     icon: "check_circle",
-    blurb: "Classified ham — delivered to the inbox",
+    blurb: "Classified ham, delivered to the inbox",
     accentText: "text-tier-allow",
     accentBorder: "border-tier-allow/50",
     containerBg: "bg-tier-allow-container",
@@ -45,7 +45,7 @@ export const TIERS: Record<Tier, TierMeta> = {
   block: {
     label: "Spam",
     icon: "block",
-    blurb: "Classified spam — rejected outright",
+    blurb: "Classified spam, rejected outright",
     accentText: "text-tier-block",
     accentBorder: "border-tier-block/50",
     containerBg: "bg-tier-block-container",
@@ -61,6 +61,14 @@ export const REASON_LABELS: Record<string, string> = {
 
 export function reasonLabel(code: string): string {
   return REASON_LABELS[code] ?? code.replaceAll("_", " ").toLowerCase();
+}
+
+/** Human label for the route that produced a verdict (hard rule / model / LLM). */
+export function routeLabel(route: string): string {
+  if (route === "hard_rule") return "Hard rule";
+  if (route === "model") return "Model";
+  if (route === "llm") return "LLM";
+  return route;
 }
 
 /** Which folder a decision lands the mail in — the metaphor every viewer already owns. */
@@ -87,7 +95,7 @@ export function outcomeFor(tier: Tier, delivered?: boolean): Outcome {
       : { folder: "spam", verb: "Moved to spam", icon: "block" };
   }
   return tier === "warn"
-    ? { folder: "inbox", verb: "Delivered — with caution", icon: "warning" }
+    ? { folder: "inbox", verb: "Delivered with caution", icon: "warning" }
     : { folder: "inbox", verb: "Delivered to inbox", icon: "check_circle" };
 }
 
@@ -105,7 +113,7 @@ export const FRIENDLY_REASON: Record<string, string> = {
   PRIZE_OR_LOTTERY_BAIT: "Dangles a prize or winnings to bait you.",
   UNSOLICITED_BULK: "Unsolicited bulk mail you never signed up for.",
   SENDER_REPUTATION_RISK: "This sender isn't trusted yet.",
-  BENIGN_CONTENT: "Looks safe — nothing suspicious found.",
+  BENIGN_CONTENT: "Looks safe, nothing suspicious found.",
   BURST_OVERRIDE: "Part of a sudden flood of similar messages.",
 };
 
@@ -121,7 +129,7 @@ export function plainReason(
   if (explanation && explanation.trim().length > 0) {
     return explanation;
   }
-  return folder === "inbox" ? "Looks safe — nothing suspicious found." : "Flagged as suspicious.";
+  return folder === "inbox" ? "Looks safe, nothing suspicious found." : "Flagged as suspicious.";
 }
 
 /** Colour accent for a seed sample's ground-truth label (picker chips). */

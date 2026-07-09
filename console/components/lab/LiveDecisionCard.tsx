@@ -1,5 +1,6 @@
 "use client";
 
+import type { KeyboardEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Icon } from "@/components/ui/icon";
 import { EMPHASIZED_EASE } from "@/lib/animation";
@@ -21,7 +22,7 @@ import { cn } from "@/lib/utils";
  * pending it shows a slow-pulsing "checking" affordance. Reduced-motion collapses every motion to an
  * instant, legible state.
  */
-export function LiveDecisionCard({ item }: { item: StreamItem }) {
+export function LiveDecisionCard({ item, onSelect }: { item: StreamItem; onSelect?: () => void }) {
   const reduceMotion = useReducedMotion();
   const { decision, resolved } = item;
   const tier = TIERS[decision.tier];
@@ -34,8 +35,27 @@ export function LiveDecisionCard({ item }: { item: StreamItem }) {
   const sender = decision.sender ?? shortId(decision.emailId);
   const subject = decision.subject;
 
+  // When selectable, the whole card is a button that opens the email's detail view. Enter/Space
+  // activate it like any button; a hover state-layer says "this is clickable" (guidelines Part VIII).
+  const interactive = onSelect
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        "aria-haspopup": "dialog" as const,
+        "aria-label": `View details for ${sender}${subject ? `: ${subject}` : ""}`,
+        onClick: onSelect,
+        onKeyDown: (event: KeyboardEvent) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect();
+          }
+        },
+      }
+    : {};
+
   return (
     <motion.article
+      {...interactive}
       initial={{ opacity: 0, y: reduceMotion ? 0 : 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduceMotion ? 0 : 0.24, ease: EMPHASIZED_EASE }}
@@ -47,6 +67,8 @@ export function LiveDecisionCard({ item }: { item: StreamItem }) {
       className={cn(
         "flex items-start gap-3 rounded-md border bg-surface-container/60 p-4 ring-1 transition-colors duration-300",
         pending ? "border-tier-quarantine/50 ring-tier-quarantine/40" : cn(tier.accentBorder, tier.ring),
+        onSelect &&
+          "cursor-pointer hover:bg-surface-variant/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
       )}
     >
       {/* Outcome badge: rotates from "checking" to the final inbox/spam icon when resolved. */}

@@ -6,7 +6,7 @@ import { TIERS } from "@/lib/tiers";
 import type { Tier } from "@/lib/api";
 
 export const metadata: Metadata = {
-  title: "Living Spam Classifier Lab — Single-Email Analyzer",
+  title: "Spam Classifier: Single-Email Analyzer",
   description:
     "Paste or pick an email and see the Living Anti-Spam System's decision: tier, reason codes, route, and latency.",
 };
@@ -23,7 +23,7 @@ export default function AnalyzerPage() {
               <Icon name="shield" filled className="text-[26px]" />
             </span>
             <div>
-              <h1 className="text-display-sm font-medium tracking-tight">Living Spam Classifier Lab</h1>
+              <h1 className="text-display-sm font-medium tracking-tight">Spam Classifier</h1>
               <p className="text-body-md text-on-surface-variant">
                 Single-email analyzer · Living Anti-Spam System
               </p>
@@ -59,7 +59,7 @@ export default function AnalyzerPage() {
 
       <footer className="mt-auto border-t border-outline/40 pt-4 text-label-md text-on-surface-variant">
         Decisions come from the Java pipeline (hard rules now; calibrated model + LLM fallback in
-        later epics). This console is a thin client — it renders verdicts, it doesn&apos;t make them.
+        later epics). This console is a thin client: it renders verdicts, it doesn&apos;t make them.
       </footer>
     </main>
   );

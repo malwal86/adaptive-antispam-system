@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Icon } from "@/components/ui/icon";
+import { EmailDetail } from "@/components/lab/EmailDetail";
 import { LiveDecisionCard } from "@/components/lab/LiveDecisionCard";
 import { StreamStatusPill } from "@/components/lab/StreamStatusPill";
 import { isPending, type StreamItem, type StreamStatus } from "@/lib/decisionStream";
@@ -38,6 +40,16 @@ function tally(items: StreamItem[]): { inbox: number; spam: number; checking: nu
  */
 export function LiveStream({ items, status }: LiveStreamProps) {
   const counts = tally(items);
+
+  // The open detail view is tracked by email id, not by a captured snapshot, so a card that resolves
+  // (quarantine-pending → final tier) while its detail is open updates in place — the same flip the
+  // stream shows. When the selected email scrolls out of the capped window, the derived item is gone
+  // and the dialog closes on its own.
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+  const selected = selectedEmailId
+    ? (items.find((item) => item.decision.emailId === selectedEmailId) ?? null)
+    : null;
+
   return (
     <section
       aria-label="Live decision stream"
@@ -76,7 +88,7 @@ export function LiveStream({ items, status }: LiveStreamProps) {
         >
           <Icon name="inbox" className="text-[40px] opacity-70" />
           <p className="text-body-md">
-            Your inbox is quiet. Run a scenario from the left to watch mail arrive — good mail lands
+            Your inbox is quiet. Run a scenario from the left to watch mail arrive: good mail lands
             here, scams get moved to spam.
           </p>
         </div>
@@ -85,12 +97,17 @@ export function LiveStream({ items, status }: LiveStreamProps) {
           <AnimatePresence initial={false}>
             {items.map((item) => (
               <li key={item.decision.emailId}>
-                <LiveDecisionCard item={item} />
+                <LiveDecisionCard
+                  item={item}
+                  onSelect={() => setSelectedEmailId(item.decision.emailId)}
+                />
               </li>
             ))}
           </AnimatePresence>
         </ol>
       )}
+
+      {selected && <EmailDetail item={selected} onClose={() => setSelectedEmailId(null)} />}
     </section>
   );
 }

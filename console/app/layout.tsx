@@ -12,7 +12,7 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "Living Spam Classifier Lab — Living Anti-Spam System",
+  title: "Spam Classifier: Living Anti-Spam System",
   description:
     "A live, three-pane spam-classifier lab over the Living Anti-Spam System: decisions stream in as the pipeline makes them.",
 };

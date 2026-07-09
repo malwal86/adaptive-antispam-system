@@ -52,7 +52,7 @@ export function CostMeter({ costUsd, capUsd, enforced }: CostMeterProps) {
         {capped ? (
           <span className="inline-flex items-center gap-1 font-medium text-tier-block" data-testid="cost-cap-hit">
             <Icon name="block" className="text-[16px] leading-none" />
-            Budget cap reached — LLM calls halted
+            Budget cap reached. LLM calls halted
           </span>
         ) : (
           <span className="text-on-surface-variant">{Math.round(ratio * 100)}% of daily cap</span>

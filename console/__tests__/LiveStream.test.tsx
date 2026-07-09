@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { LiveStream } from "@/components/lab/LiveStream";
 import type { AnalyzeResponse } from "@/lib/api";
 import type { StreamItem } from "@/lib/decisionStream";
@@ -66,5 +66,58 @@ describe("LiveStream", () => {
     expect(summary).toHaveTextContent(/1 delivered/);
     expect(summary).toHaveTextContent(/1 blocked/);
     expect(summary).toHaveTextContent(/1 checking/);
+  });
+
+  it("opens a detail dialog for the clicked email, then closes it", () => {
+    render(
+      <LiveStream
+        status="open"
+        items={[
+          card({
+            emailId: "e-block",
+            classificationId: "b",
+            tier: "block",
+            sender: "Your Bank",
+            subject: "Verify your account now",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByTestId("email-detail")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("live-decision-card"));
+
+    const dialog = screen.getByTestId("email-detail");
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByTestId("detail-subject")).toHaveTextContent("Verify your account now");
+
+    fireEvent.click(screen.getByTestId("detail-close"));
+    expect(screen.queryByTestId("email-detail")).not.toBeInTheDocument();
+  });
+
+  it("keeps the open dialog bound to the live email as it resolves in place", () => {
+    const { rerender } = render(
+      <LiveStream
+        status="open"
+        items={[
+          card({ emailId: "e1", classificationId: "p", tier: "quarantine", reasonCodes: [], routeUsed: "llm", sender: "Parcel Notice" }),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("live-decision-card"));
+    expect(screen.getByTestId("detail-pending")).toBeInTheDocument();
+
+    // The same email resolves to a final tier — the dialog reflects it without reopening.
+    rerender(
+      <LiveStream
+        status="open"
+        items={[
+          card({ emailId: "e1", classificationId: "r", tier: "block", reasonCodes: ["KNOWN_BAD_URL"], routeUsed: "llm", sender: "Parcel Notice" }, true),
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("detail-pending")).not.toBeInTheDocument();
+    expect(screen.getByTestId("detail-outcome")).toHaveTextContent(/Moved to spam/);
   });
 });
