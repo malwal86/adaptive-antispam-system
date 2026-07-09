@@ -16,9 +16,9 @@ export interface TierMeta {
 
 export const TIERS: Record<Tier, TierMeta> = {
   allow: {
-    label: "Allow",
+    label: "Ham",
     icon: "check_circle",
-    blurb: "Delivered to the inbox",
+    blurb: "Classified ham — delivered to the inbox",
     accentText: "text-tier-allow",
     accentBorder: "border-tier-allow/50",
     containerBg: "bg-tier-allow-container",
@@ -43,9 +43,9 @@ export const TIERS: Record<Tier, TierMeta> = {
     ring: "ring-tier-quarantine/40",
   },
   block: {
-    label: "Block",
+    label: "Spam",
     icon: "block",
-    blurb: "Rejected outright",
+    blurb: "Classified spam — rejected outright",
     accentText: "text-tier-block",
     accentBorder: "border-tier-block/50",
     containerBg: "bg-tier-block-container",

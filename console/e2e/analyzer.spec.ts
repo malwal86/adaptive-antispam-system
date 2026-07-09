@@ -59,7 +59,7 @@ test("paste an email, submit, and see the tier badge and reason chip", async ({ 
   const card = page.getByTestId("result-card");
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute("data-tier", "block");
-  await expect(page.getByTestId("tier-label")).toHaveText("Block");
+  await expect(page.getByTestId("tier-label")).toHaveText("Spam");
   await expect(page.getByTestId("route-used")).toHaveText("Hard rule");
   await expect(page.getByTestId("reason-chip")).toContainText("Known-bad URL");
 });
