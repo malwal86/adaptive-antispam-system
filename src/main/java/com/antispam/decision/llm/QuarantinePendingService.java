@@ -3,6 +3,7 @@ package com.antispam.decision.llm;
 import com.antispam.decision.Classification;
 import com.antispam.decision.ClassificationRepository;
 import com.antispam.decision.Decision;
+import com.antispam.decision.DecisionMadeEvent;
 import com.antispam.decision.DecisionOutcome;
 import com.antispam.decision.FusedScore;
 import com.antispam.decision.ModelScores;
@@ -22,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
@@ -58,6 +60,7 @@ public class QuarantinePendingService {
     private final QuarantinePendingProperties properties;
     private final Executor resolutionExecutor;
     private final ExecutorService slaExecutor;
+    private final ApplicationEventPublisher events;
 
     @Autowired
     public QuarantinePendingService(
@@ -67,7 +70,8 @@ public class QuarantinePendingService {
             LlmMeter meter,
             QuarantinePendingProperties properties,
             @Qualifier("llmResolutionExecutor") Executor resolutionExecutor,
-            @Qualifier("llmSlaExecutor") ExecutorService slaExecutor) {
+            @Qualifier("llmSlaExecutor") ExecutorService slaExecutor,
+            ApplicationEventPublisher events) {
         this.llmFallbackService = llmFallbackService;
         this.repository = repository;
         this.circuitBreaker = circuitBreaker;
@@ -75,6 +79,7 @@ public class QuarantinePendingService {
         this.properties = properties;
         this.resolutionExecutor = resolutionExecutor;
         this.slaExecutor = slaExecutor;
+        this.events = events;
     }
 
     /**
@@ -129,7 +134,28 @@ public class QuarantinePendingService {
                 repository.save(request.email().id(), resolvedOutcome, request.fused(), request.policyVersion(), cost);
         log.info("resolved quarantine-pending email={} state={} decision={} degradedBanner={} costUsd={}",
                 request.email().id(), resolved.state(), resolved.decision(), resolved.degradedBanner(), cost);
+        // Project the resolution onto the live decision stream (Epic 12). The console's feed is driven
+        // solely by DecisionMadeEvent, and the synchronous decision only published the provisional
+        // quarantine-pending row — so without this the card would stay frozen on QUARANTINE while the
+        // resolved verdict lived only in the DB. Best-effort and off the critical path: the row is
+        // already persisted, so a publish failure must never fail the resolution.
+        publish(row);
         return row;
+    }
+
+    /**
+     * Announces the resolved decision to in-process live consumers (the console's decision stream),
+     * mirroring the fast path's publication in {@link com.antispam.decision.DecisionService}. Isolated
+     * from the resolution's outcome: the decision is already recorded, so a stream failure is logged
+     * and swallowed rather than propagated.
+     */
+    private void publish(Classification classification) {
+        try {
+            events.publishEvent(new DecisionMadeEvent(classification));
+        } catch (RuntimeException e) {
+            log.warn("decision-stream publish failed for resolved email={} (resolution still recorded)",
+                    classification.emailId(), e);
+        }
     }
 
     /**
